@@ -118,7 +118,7 @@
             v1.0.0-dev
           </span>
         </h1>
-        <p class="text-xs text-slate-400">Targeted for Hama / Herma 5028 (83.8 x 50.8 mm · 10 per A4)</p>
+        <p class="text-xs text-slate-400">Targeted for Herma 5028 / Hama (83.8 x 50.8 mm · 10 per A4)</p>
       </div>
     </div>
 
@@ -172,17 +172,25 @@
       
       <!-- Toolbar Controls -->
       <div class="w-full max-w-4xl mb-4 flex flex-wrap justify-between items-center bg-slate-900 border border-slate-800 p-3.5 rounded-xl text-xs text-slate-300 gap-4">
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-3 flex-wrap gap-y-2">
           <span class="font-medium text-slate-200 flex items-center gap-1.5">
             <i class="fa-solid fa-sliders text-indigo-400"></i> Calibration Offsets:
           </span>
           <label class="flex items-center gap-1">
             Top:
-            <input type="number" id="top-offset" value="21.5" step="0.5" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
+            <input type="number" id="top-offset" value="21.5" step="0.1" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
           </label>
           <label class="flex items-center gap-1">
             Left:
-            <input type="number" id="left-offset" value="21.2" step="0.5" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
+            <input type="number" id="left-offset" value="18.64" step="0.01" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
+          </label>
+          <label class="flex items-center gap-1" title="Vertical Gap Between Columns">
+            Col Gap:
+            <input type="number" id="col-gap" value="5.08" step="0.01" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
+          </label>
+          <label class="flex items-center gap-1" title="Horizontal Gap Between Rows">
+            Row Gap:
+            <input type="number" id="row-gap" value="0.0" step="0.1" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
           </label>
         </div>
 
@@ -201,7 +209,7 @@
         
         <!-- Sheet Header Info Watermark (screen only) -->
         <div class="absolute top-2 left-0 w-full text-center text-[9px] text-slate-400 font-mono uppercase tracking-widest no-print select-none">
-          DIN A4 Sheet • Tonuino Card Creator • Hama 5028 / Herma 5028 Grid (83.8mm x 50.8mm)
+          DIN A4 Sheet • Tonuino Card Creator • Herma 5028 Grid (83.8mm x 50.8mm)
         </div>
 
         <!-- 10 Slot Grid Layout -->
@@ -430,7 +438,7 @@
 
   <!-- Application Logic JavaScript -->
   <script>
-    // Configuration & Geometry for Hama 5028 / Herma 5028 DIN A4 Label Paper
+    // Configuration & Geometry for Herma 5028 / Hama DIN A4 Label Paper
     const LABEL_WIDTH = 83.8;  // mm
     const LABEL_HEIGHT = 50.8; // mm
     
@@ -460,8 +468,11 @@
       'slots'
     ];
 
-    let topMargin = 21.5;  // default top margin mm
-    let leftMargin = 21.2; // default left margin mm
+    // Offsets & Gaps according to Herma 5028 specification:
+    let topMargin = 21.5;   // top/bottom margin mm
+    let leftMargin = 18.64; // left margin mm
+    let colGap = 5.08;      // vertical gap between columns mm
+    let rowGap = 0.0;       // horizontal gap between rows mm
 
     // State Management
     let albums = [];
@@ -819,7 +830,7 @@
 
     function exportJSONFile() {
       const backupData = {
-        version: '1.0',
+        version: '1.1',
         exportedAt: new Date().toISOString(),
         cards: albums,
         slots: slots
@@ -836,7 +847,7 @@
 
     function copyJSONToClipboard() {
       const backupData = {
-        version: '1.0',
+        version: '1.1',
         cards: albums,
         slots: slots
       };
@@ -910,8 +921,10 @@
 
     /* --- MARGIN & CALIBRATION CONTROLS --- */
     function updateSheetMargins() {
-      topMargin = parseFloat(document.getElementById('top-offset').value) || 21.5;
-      leftMargin = parseFloat(document.getElementById('left-offset').value) || 21.2;
+      topMargin = parseFloat(document.getElementById('top-offset').value) ?? 21.5;
+      leftMargin = parseFloat(document.getElementById('left-offset').value) ?? 18.64;
+      colGap = parseFloat(document.getElementById('col-gap').value) ?? 5.08;
+      rowGap = parseFloat(document.getElementById('row-gap').value) ?? 0.0;
       renderGridSlots();
     }
 
@@ -1433,7 +1446,7 @@
       }
     }
 
-    /* --- HAMA 5028 SHEET GRID RENDERER (DIN A4 PAGE) --- */
+    /* --- HERMA 5028 SHEET GRID RENDERER (DIN A4 PAGE) --- */
     function renderGridSlots() {
       const previewGrid = document.getElementById('grid-container');
       const printGrid = document.getElementById('print-grid-container');
@@ -1446,8 +1459,9 @@
         const col = i % 2;
         const row = Math.floor(i / 2);
 
-        const leftMm = leftMargin + (col * LABEL_WIDTH);
-        const topMm = topMargin + (row * LABEL_HEIGHT);
+        // Position calculation incorporating column & row gaps
+        const leftMm = leftMargin + (col * (LABEL_WIDTH + colGap));
+        const topMm = topMargin + (row * (LABEL_HEIGHT + rowGap));
 
         const album = slots[i];
 
