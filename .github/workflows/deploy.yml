@@ -111,7 +111,7 @@ jobs:
         run: |
           VERSION="${{ steps.autotag.outputs.VERSION_TAG }}"
           echo "Injecting version $VERSION into index.html"
-          sed -i "s/v1\.0\.0/$VERSION/g" index.html || true
+          sed -i "s/v1\.0\.0-dev/$VERSION/g" index.html || true
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
