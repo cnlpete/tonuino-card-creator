@@ -23,15 +23,37 @@
       aspect-ratio: 83.8 / 50.8;
     }
 
+    /* Screen-only rules for print section */
+    @media screen {
+      #print-section {
+        display: none !important;
+      }
+    }
+
     /* Print Calibration & Layout Engine */
     @media print {
-      body * {
-        visibility: hidden !important;
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
-      #print-section, #print-section * {
-        visibility: visible !important;
+
+      html, body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        overflow: hidden;
       }
+
+      /* Hide screen UI */
+      header, main, #add-modal, .no-print {
+        display: none !important;
+      }
+
+      /* Printable region */
       #print-section {
+        display: block !important;
         position: absolute;
         left: 0;
         top: 0;
@@ -41,16 +63,16 @@
         padding: 0;
         background: white;
       }
+
       @page {
         size: A4 portrait;
         margin: 0mm;
       }
-      .no-print {
-        display: none !important;
-      }
+
       .print-border {
         border: 0.5pt dashed #cbd5e1 !important;
       }
+
       .print-no-border {
         border: none !important;
       }
@@ -163,8 +185,8 @@
     </section>
   </main>
 
-  <!-- PRINT SECTION (Only rendered during print) -->
-  <div id="print-section" class="hidden">
+  <!-- PRINT SECTION -->
+  <div id="print-section">
     <div id="print-grid-container" class="relative w-[210mm] h-[297mm]">
       <!-- Cloned print items inserted here -->
     </div>
@@ -453,7 +475,7 @@
               <button onclick="openAddModal('${album.id}')" class="hover:text-indigo-300 text-xs p-1 transition" title="Edit Album">
                 <i class="fa-solid fa-pen-to-square"></i>
               </button>
-              <button onclick="cloneAlbum('${album.id}')" class="hover:text-emerald-400 text-xs p-1 transition" title="Clone Album (Try different style)">
+              <button onclick="cloneAlbum('${album.id}')" class="hover:text-emerald-400 text-xs p-1 transition" title="Clone Album">
                 <i class="fa-solid fa-copy"></i>
               </button>
               <button onclick="deleteAlbum('${album.id}')" class="hover:text-red-400 text-xs p-1 transition" title="Delete Album">
@@ -476,7 +498,6 @@
         title: `${original.title} (Copy)`
       };
 
-      // Insert right after original in list
       const origIndex = albums.findIndex(a => a.id === id);
       if (origIndex !== -1) {
         albums.splice(origIndex + 1, 0, clonedAlbum);
@@ -484,7 +505,6 @@
         albums.unshift(clonedAlbum);
       }
 
-      // Automatically place clone in first free slot if available
       const emptySlotIndex = slots.findIndex(s => s === null);
       if (emptySlotIndex !== -1) {
         slots[emptySlotIndex] = clonedAlbum;
@@ -514,7 +534,6 @@
       document.getElementById('results-heading').classList.add('hidden');
 
       if (albumIdToEdit) {
-        // EDIT MODE
         const album = albums.find(a => a.id === albumIdToEdit);
         if (!album) return;
 
@@ -530,7 +549,6 @@
         activeCropX = album.cropX ?? 50;
         activeCropY = album.cropY ?? 50;
 
-        // Set radio buttons
         const radios = document.getElementsByName('format-style');
         for (const r of radios) {
           r.checked = (r.value === activeFormatStyle);
@@ -538,7 +556,6 @@
         document.getElementById('input-show-text').checked = activeShowText;
 
       } else {
-        // NEW ALBUM MODE
         editingAlbumId = null;
         heading.innerHTML = `<i class="fa-solid fa-magnifying-glass text-indigo-400"></i> Search & Customize Album Artwork`;
         saveBtn.innerText = 'Save Album to Collection';
@@ -547,7 +564,6 @@
         document.getElementById('input-title').value = '';
         document.getElementById('input-show-text').checked = true;
         
-        // Reset format style to split default
         const radios = document.getElementsByName('format-style');
         for (const r of radios) {
           r.checked = (r.value === 'split');
@@ -821,14 +837,12 @@
         const deltaX = clientX - dragStartX;
         const deltaY = clientY - dragStartY;
 
-        // Map pixel drag delta to percentage offset
         let newX = startCropX - (deltaX / rect.width) * 100;
         let newY = startCropY - (deltaY / rect.height) * 100;
 
         activeCropX = Math.max(0, Math.min(100, Math.round(newX)));
         activeCropY = Math.max(0, Math.min(100, Math.round(newY)));
 
-        // Live update image DOM style directly for smooth drag
         const img = previewBox.querySelector('.crop-target-img');
         if (img) {
           img.style.objectPosition = `${activeCropX}% ${activeCropY}%`;
@@ -872,17 +886,13 @@
       };
 
       if (editingAlbumId) {
-        // Update existing album
         const idx = albums.findIndex(a => a.id === editingAlbumId);
         if (idx !== -1) {
           const updatedAlbum = { ...albumData, id: editingAlbumId };
           albums[idx] = updatedAlbum;
-
-          // Update any slots on the print grid holding this album
           slots = slots.map(slot => (slot && slot.id === editingAlbumId) ? updatedAlbum : slot);
         }
       } else {
-        // Create new album
         const newAlbum = {
           ...albumData,
           id: Date.now().toString()
