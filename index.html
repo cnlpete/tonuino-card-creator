@@ -49,7 +49,7 @@
         display: none !important;
       }
       .print-border {
-        border: 0.5pt dashed #cbd5e1 !important; /* Subtle cut lines if needed */
+        border: 0.5pt dashed #cbd5e1 !important;
       }
       .print-no-border {
         border: none !important;
@@ -232,17 +232,24 @@
 
         <!-- Format Options Section -->
         <div class="border-t border-slate-800 pt-4 space-y-3">
-          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Cover Resize & Formatting Style (Format: 83.8 x 50.8 mm)
-          </label>
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Cover Resize & Formatting Style (Format: 83.8 x 50.8 mm)
+            </label>
+            <!-- TOGGLE OPTION FOR TEXT OVERLAY -->
+            <label class="flex items-center gap-2 cursor-pointer text-xs text-indigo-300 font-medium select-none bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 hover:border-slate-600 transition">
+              <input type="checkbox" id="input-show-text" checked onchange="updateFormatPreview()" class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer">
+              <span><i class="fa-solid fa-font text-indigo-400 mr-1"></i> Show Text Overlay</span>
+            </label>
+          </div>
           
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <label class="cursor-pointer">
               <input type="radio" name="format-style" value="split" checked onchange="updateFormatPreview()" class="peer sr-only">
               <div class="p-2.5 rounded-lg border border-slate-700 bg-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/40 text-center transition">
                 <i class="fa-solid fa-table-columns block mb-1 text-indigo-400"></i>
-                <span class="text-[11px] font-medium block">Cover + Text</span>
-                <span class="text-[9px] text-slate-400">Square cover + Artist/Title</span>
+                <span class="text-[11px] font-medium block">Cover + Panel</span>
+                <span class="text-[9px] text-slate-400">Square cover + Side layout</span>
               </div>
             </label>
 
@@ -311,6 +318,7 @@
     let slots = Array(10).fill(null); // 10 Grid Positions (0..9)
     let selectedSearchCoverUrl = '';
     let activeFormatStyle = 'split';
+    let activeShowText = true;
 
     // Initial Default Seed Data
     const defaultAlbums = [
@@ -319,21 +327,24 @@
         artist: 'Pink Floyd',
         title: 'The Dark Side of the Moon',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/90/a6/55/90a6552a-9694-811c-2236-efd378051772/886443702170.jpg/600x600bb.jpg',
-        style: 'split'
+        style: 'split',
+        showText: true
       },
       {
         id: '2',
         artist: 'Daft Punk',
         title: 'Random Access Memories',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/bf/2d/72/bf2d72a8-0853-e993-e4dd-b54199c017ef/886443927085.jpg/600x600bb.jpg',
-        style: 'split'
+        style: 'split',
+        showText: true
       },
       {
         id: '3',
         artist: 'Fleetwood Mac',
         title: 'Rumours',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/bf/02/76/bf027600-4b96-bc9c-95ea-6b215a7702f7/081227967789.jpg/600x600bb.jpg',
-        style: 'split'
+        style: 'split',
+        showText: true
       }
     ];
 
@@ -402,7 +413,10 @@
           <div class="flex-1 min-w-0">
             <h4 class="text-xs font-bold text-white truncate">${escapeHtml(album.title)}</h4>
             <p class="text-[11px] text-slate-400 truncate">${escapeHtml(album.artist)}</p>
-            <span class="inline-block mt-1 text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded uppercase">${album.style || 'split'}</span>
+            <div class="flex items-center gap-1 mt-1">
+              <span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded uppercase font-mono">${album.style || 'split'}</span>
+              ${album.showText === false ? '<span class="text-[9px] bg-rose-950/80 text-rose-300 px-1.5 py-0.5 rounded">No Text</span>' : ''}
+            </div>
           </div>
 
           <div class="flex flex-col gap-1">
@@ -442,6 +456,7 @@
       document.getElementById('add-modal').classList.remove('hidden');
       document.getElementById('input-artist').value = '';
       document.getElementById('input-title').value = '';
+      document.getElementById('input-show-text').checked = true;
       document.getElementById('search-results').innerHTML = '';
       document.getElementById('results-heading').classList.add('hidden');
       selectedSearchCoverUrl = '';
@@ -486,7 +501,6 @@
           const data = await res.json();
           if (data.results) {
             data.results.forEach(item => {
-              // High resolution URL trick for iTunes (replace 100x100bb with 600x600bb)
               const highResCover = item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '600x600bb') : '';
               results.push({
                 source: 'iTunes',
@@ -593,60 +607,73 @@
         if (r.checked) activeFormatStyle = r.value;
       }
 
+      activeShowText = document.getElementById('input-show-text').checked;
+
       const artist = document.getElementById('input-artist').value || 'Artist Name';
       const title = document.getElementById('input-title').value || 'Album Title';
       const coverUrl = selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=Select+Cover';
 
       const previewBox = document.getElementById('format-preview-box');
-      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle);
+      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle, activeShowText);
     }
 
-    function generateFormattedLabelHTML(artist, title, coverUrl, style) {
+    function generateFormattedLabelHTML(artist, title, coverUrl, style, showText = true) {
+      const textOverlayHTML = showText ? `
+        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-1.5 text-white z-10">
+          <p class="text-[9px] font-bold truncate leading-tight">${escapeHtml(title)}</p>
+          <p class="text-[7px] text-indigo-200 truncate mt-0.5">${escapeHtml(artist)}</p>
+        </div>
+      ` : '';
+
       if (style === 'split') {
-        // Square cover on left (matches 50.8mm height), styled text block on right
+        const rightPanelContent = showText ? `
+          <h5 class="text-[10px] font-extrabold leading-tight tracking-tight text-white line-clamp-2 uppercase">${escapeHtml(title)}</h5>
+          <p class="text-[8px] font-semibold text-indigo-300 mt-0.5 line-clamp-1">${escapeHtml(artist)}</p>
+          <div class="mt-1 flex items-center gap-1 opacity-60">
+            <i class="fa-solid fa-barcode text-[10px]"></i>
+            <span class="text-[6px] tracking-widest font-mono">HAMA-5028</span>
+          </div>
+        ` : `
+          <div class="flex flex-col items-center justify-center h-full opacity-25 gap-1 select-none">
+            <i class="fa-solid fa-compact-disc text-xl text-slate-300"></i>
+            <i class="fa-solid fa-barcode text-xs text-slate-300"></i>
+          </div>
+        `;
+
         return `
           <div class="w-full h-full bg-slate-950 flex items-center overflow-hidden text-white font-sans">
             <div class="h-full aspect-square flex-shrink-0 bg-black">
               <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
             </div>
             <div class="flex-1 px-2 py-1 flex flex-col justify-center min-w-0 bg-gradient-to-r from-slate-900 to-slate-950 h-full border-l border-slate-800/80">
-              <h5 class="text-[10px] font-extrabold leading-tight tracking-tight text-white line-clamp-2 uppercase">${escapeHtml(title)}</h5>
-              <p class="text-[8px] font-semibold text-indigo-300 mt-0.5 line-clamp-1">${escapeHtml(artist)}</p>
-              <div class="mt-1 flex items-center gap-1 opacity-60">
-                <i class="fa-solid fa-barcode text-[10px]"></i>
-                <span class="text-[6px] tracking-widest font-mono">HAMA-5028</span>
-              </div>
+              ${rightPanelContent}
             </div>
           </div>
         `;
       } else if (style === 'crop') {
-        // Crop/Zoom square image to fill 83.8x50.8mm rectangle
         return `
           <div class="w-full h-full bg-black relative overflow-hidden">
             <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
-            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5 text-white">
-              <p class="text-[9px] font-bold truncate">${escapeHtml(title)}</p>
-              <p class="text-[7px] text-slate-300 truncate">${escapeHtml(artist)}</p>
-            </div>
+            ${textOverlayHTML}
           </div>
         `;
       } else if (style === 'blur') {
-        // Blurred ambient background fill
         return `
           <div class="w-full h-full relative overflow-hidden flex items-center justify-center bg-black">
             <img src="${coverUrl}" class="absolute inset-0 w-full h-full object-cover blur-md opacity-50 scale-110" alt="Background">
             <div class="relative h-full aspect-square z-10 shadow-lg">
               <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
             </div>
+            ${textOverlayHTML}
           </div>
         `;
-      } else {
-        // Letterbox / Contain centered
+      } else { // contain
         return `
           <div class="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden">
             <div class="h-full aspect-square border-x border-slate-800">
               <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
             </div>
+            ${textOverlayHTML}
           </div>
         `;
       }
@@ -666,7 +693,8 @@
         artist: artist,
         title: title,
         coverUrl: selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
-        style: activeFormatStyle
+        style: activeFormatStyle,
+        showText: activeShowText
       };
 
       albums.unshift(newAlbum);
@@ -711,10 +739,10 @@
             
             ${album ? `
               <div class="w-full h-full relative group">
-                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split')}
+                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false)}
                 
                 <!-- Quick Controls Overlay -->
-                <div class="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 no-print">
+                <div class="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 no-print z-20">
                   <span class="text-[9px] font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">Slot ${i + 1}</span>
                   <button onclick="removeFromSlot(${i})" class="bg-red-600 text-white p-1.5 rounded hover:bg-red-500 text-xs" title="Remove from slot">
                     <i class="fa-solid fa-xmark"></i>
@@ -735,7 +763,7 @@
           printHTML += `
             <div class="absolute print-no-border"
                  style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;">
-              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split')}
+              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false)}
             </div>
           `;
         }
