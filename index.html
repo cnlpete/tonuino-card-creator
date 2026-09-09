@@ -468,6 +468,7 @@
     let slots = Array(10).fill(null); // 10 Grid Positions (0..9)
     let editingAlbumId = null; // Track if editing existing album or adding new
     let selectedSearchCoverUrl = '';
+    let selectedSearchCoverBase64 = null;
     let activeFormatStyle = 'split';
     let activeShowText = true;
     let activeCropX = 50; // percentage offset
@@ -487,6 +488,7 @@
         artist: 'Pink Floyd',
         title: 'The Dark Side of the Moon',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/90/a6/55/90a6552a-9694-811c-2236-efd378051772/886443702170.jpg/600x600bb.jpg',
+        imageBase64: null,
         style: 'crop',
         showText: true,
         cropX: 50,
@@ -497,6 +499,7 @@
         artist: 'Daft Punk',
         title: 'Random Access Memories',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/bf/2d/72/bf2d72a8-0853-e993-e4dd-b54199c017ef/886443927085.jpg/600x600bb.jpg',
+        imageBase64: null,
         style: 'split',
         showText: true,
         cropX: 50,
@@ -507,12 +510,80 @@
         artist: 'Fleetwood Mac',
         title: 'Rumours',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/bf/02/76/bf027600-4b96-bc9c-95ea-6b215a7702f7/081227967789.jpg/600x600bb.jpg',
+        imageBase64: null,
         style: 'split',
         showText: true,
         cropX: 50,
         cropY: 50
       }
     ];
+
+    /**
+     * Converts an image URL or Blob URL to a Base64 Data URL string.
+     * @param {string} url
+     * @returns {Promise<string|null>}
+     */
+    async function imageUrlToBase64(url) {
+      if (!url) return null;
+      if (url.startsWith('data:image/')) return url;
+
+      try {
+        const response = await fetch(url, { mode: 'cors' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'Anonymous';
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth || img.width;
+              canvas.height = img.naturalHeight || img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              resolve(canvas.toDataURL('image/png'));
+            } catch (e) {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = url;
+        });
+      }
+    }
+
+    /**
+     * Background sync function to cache Base64 data for any cards lacking it.
+     */
+    async function ensureBase64ForAlbums() {
+      let updated = false;
+      for (let i = 0; i < albums.length; i++) {
+        if (!albums[i].imageBase64 && albums[i].coverUrl) {
+          const b64 = await imageUrlToBase64(albums[i].coverUrl);
+          if (b64) {
+            albums[i].imageBase64 = b64;
+            updated = true;
+          }
+        }
+      }
+      if (updated) {
+        slots = slots.map(slot => {
+          if (!slot) return null;
+          const match = albums.find(a => a.id === slot.id);
+          return match || slot;
+        });
+        saveLocalStorage();
+        renderAlbumList();
+        renderGridSlots();
+      }
+    }
 
     // Initialize App
     window.addEventListener('DOMContentLoaded', () => {
@@ -521,6 +592,7 @@
       renderGridSlots();
       updateSheetMargins();
       initCropDragListeners();
+      ensureBase64ForAlbums();
     });
 
     /* --- MIGRATION & LOCAL STORAGE ENGINE --- */
@@ -589,6 +661,7 @@
           artist: item.artist || item.artistName || item.subtitle || 'Unknown Artist',
           title: item.title || item.albumTitle || item.name || 'Untitled Card',
           coverUrl: item.coverUrl || item.cover || item.image || item.img || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+          imageBase64: item.imageBase64 || item.base64 || null,
           style: item.style || item.formatStyle || 'split',
           showText: item.showText !== undefined ? item.showText : true,
           cropX: item.cropX !== undefined ? item.cropX : 50,
@@ -604,7 +677,10 @@
           if (!slot) return null;
           // Match with loaded album or preserve object
           const match = albums.find(a => a.id === slot.id || (a.title === slot.title && a.artist === slot.artist));
-          return match || slot;
+          return match || {
+            ...slot,
+            imageBase64: slot.imageBase64 || slot.base64 || null
+          };
         });
         while (slots.length < 10) slots.push(null);
       } else {
@@ -702,6 +778,7 @@
             artist: item.artist || item.artistName || 'Unknown Artist',
             title: item.title || item.albumTitle || 'Untitled Card',
             coverUrl: item.coverUrl || item.cover || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+            imageBase64: item.imageBase64 || item.base64 || null,
             style: item.style || 'split',
             showText: item.showText !== undefined ? item.showText : true,
             cropX: item.cropX ?? 50,
@@ -720,6 +797,7 @@
           saveLocalStorage();
           renderAlbumList();
           renderGridSlots();
+          ensureBase64ForAlbums();
           alert(`Successfully imported ${imported.length} cards from "${keyName}"!`);
           closeDataModal();
         } else {
@@ -735,6 +813,7 @@
       renderAlbumList();
       renderGridSlots();
       renderStorageKeysList();
+      ensureBase64ForAlbums();
       alert('Browser local storage scan complete!');
     }
 
@@ -801,6 +880,7 @@
           artist: item.artist || 'Unknown Artist',
           title: item.title || 'Untitled Card',
           coverUrl: item.coverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+          imageBase64: item.imageBase64 || item.base64 || null,
           style: item.style || 'split',
           showText: item.showText !== undefined ? item.showText : true,
           cropX: item.cropX ?? 50,
@@ -808,12 +888,19 @@
         }));
 
         if (parsed.slots && Array.isArray(parsed.slots)) {
-          slots = parsed.slots.slice(0, 10);
+          slots = parsed.slots.slice(0, 10).map(s => {
+            if (!s) return null;
+            return {
+              ...s,
+              imageBase64: s.imageBase64 || s.base64 || null
+            };
+          });
         }
 
         saveLocalStorage();
         renderAlbumList();
         renderGridSlots();
+        ensureBase64ForAlbums();
         alert(`Successfully imported ${albums.length} cards from backup!`);
         closeDataModal();
       } catch(err) {
@@ -852,7 +939,7 @@
       listEl.innerHTML = albums.map(album => `
         <div class="bg-slate-800/70 border border-slate-700/60 rounded-xl p-3 flex gap-3 items-center hover:border-slate-600 transition group">
           <div class="w-12 h-12 bg-slate-900 rounded-lg overflow-hidden flex-shrink-0 border border-slate-700">
-            <img src="${album.coverUrl}" class="w-full h-full object-cover" style="object-position: ${album.cropX ?? 50}% ${album.cropY ?? 50}%;" alt="Cover" onerror="this.src='https://via.placeholder.com/150?text=No+Cover'">
+            <img src="${album.imageBase64 || album.coverUrl}" class="w-full h-full object-cover" style="object-position: ${album.cropX ?? 50}% ${album.cropY ?? 50}%;" alt="Cover" onerror="if(this.src !== '${escapeHtml(album.coverUrl)}') this.src='${escapeHtml(album.coverUrl)}'; else this.src='https://via.placeholder.com/150?text=No+Cover';">
           </div>
           
           <div class="flex-1 min-w-0">
@@ -950,6 +1037,7 @@
         document.getElementById('input-artist').value = album.artist || '';
         document.getElementById('input-title').value = album.title || '';
         selectedSearchCoverUrl = album.coverUrl || '';
+        selectedSearchCoverBase64 = album.imageBase64 || null;
         activeFormatStyle = album.style || 'split';
         activeShowText = album.showText !== false;
         activeCropX = album.cropX ?? 50;
@@ -976,6 +1064,7 @@
         }
 
         selectedSearchCoverUrl = '';
+        selectedSearchCoverBase64 = null;
         activeFormatStyle = 'split';
         activeShowText = true;
         activeCropX = 50;
@@ -1091,8 +1180,9 @@
       }
     }
 
-    function selectSearchCover(url, artist, title) {
+    async function selectSearchCover(url, artist, title) {
       selectedSearchCoverUrl = url;
+      selectedSearchCoverBase64 = await imageUrlToBase64(url);
       if (artist) document.getElementById('input-artist').value = artist;
       if (title) document.getElementById('input-title').value = title;
       activeCropX = 50;
@@ -1100,13 +1190,14 @@
       updateFormatPreview();
     }
 
-    function useCustomUrl() {
+    async function useCustomUrl() {
       const url = document.getElementById('input-custom-url').value.trim();
       if (!url) {
         alert('Please enter a valid image URL');
         return;
       }
       selectedSearchCoverUrl = url;
+      selectedSearchCoverBase64 = await imageUrlToBase64(url);
       activeCropX = 50;
       activeCropY = 50;
       updateFormatPreview();
@@ -1118,6 +1209,7 @@
         const reader = new FileReader();
         reader.onload = function(evt) {
           selectedSearchCoverUrl = evt.target.result;
+          selectedSearchCoverBase64 = evt.target.result;
           activeCropX = 50;
           activeCropY = 50;
           updateFormatPreview();
@@ -1150,10 +1242,14 @@
         previewBox.style.cursor = 'default';
       }
 
-      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle, activeShowText, activeCropX, activeCropY);
+      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle, activeShowText, activeCropX, activeCropY, selectedSearchCoverBase64);
     }
 
-    function generateFormattedLabelHTML(artist, title, coverUrl, style, showText = true, cropX = 50, cropY = 50) {
+    function generateFormattedLabelHTML(artist, title, coverUrl, style, showText = true, cropX = 50, cropY = 50, imageBase64 = null) {
+      const displaySrc = imageBase64 || coverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=Select+Cover';
+      const fallbackSrc = coverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover';
+      const imgOnError = `onerror="if(this.src !== '${escapeHtml(fallbackSrc)}') this.src='${escapeHtml(fallbackSrc)}'; else this.src='https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover';"`;
+
       const textOverlayHTML = showText ? `
         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-1.5 text-white z-10 pointer-events-none">
           <p class="text-[9px] font-bold truncate leading-tight">${escapeHtml(title)}</p>
@@ -1179,7 +1275,7 @@
         return `
           <div class="w-full h-full bg-slate-950 flex items-center overflow-hidden text-white font-sans pointer-events-none">
             <div class="h-full aspect-square flex-shrink-0 bg-black">
-              <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+              <img src="${displaySrc}" ${imgOnError} class="w-full h-full object-cover" alt="Cover">
             </div>
             <div class="flex-1 px-2 py-1 flex flex-col justify-center min-w-0 bg-gradient-to-r from-slate-900 to-slate-950 h-full border-l border-slate-800/80">
               ${rightPanelContent}
@@ -1189,7 +1285,7 @@
       } else if (style === 'crop') {
         return `
           <div class="w-full h-full bg-black relative overflow-hidden">
-            <img src="${coverUrl}" 
+            <img src="${displaySrc}" ${imgOnError} 
                  class="crop-target-img w-full h-full object-cover select-none pointer-events-none" 
                  style="object-position: ${cropX}% ${cropY}%;" 
                  alt="Cover">
@@ -1199,9 +1295,9 @@
       } else if (style === 'blur') {
         return `
           <div class="w-full h-full relative overflow-hidden flex items-center justify-center bg-black pointer-events-none">
-            <img src="${coverUrl}" class="absolute inset-0 w-full h-full object-cover blur-md opacity-50 scale-110" alt="Background">
+            <img src="${displaySrc}" ${imgOnError} class="absolute inset-0 w-full h-full object-cover blur-md opacity-50 scale-110" alt="Background">
             <div class="relative h-full aspect-square z-10 shadow-lg">
-              <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+              <img src="${displaySrc}" ${imgOnError} class="w-full h-full object-cover" alt="Cover">
             </div>
             ${textOverlayHTML}
           </div>
@@ -1210,7 +1306,7 @@
         return `
           <div class="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden pointer-events-none">
             <div class="h-full aspect-square border-x border-slate-800">
-              <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+              <img src="${displaySrc}" ${imgOnError} class="w-full h-full object-cover" alt="Cover">
             </div>
             ${textOverlayHTML}
           </div>
@@ -1272,7 +1368,7 @@
     }
 
     /* --- SAVE / UPDATE CARD LOGIC --- */
-    function saveSelectedAlbum() {
+    async function saveSelectedAlbum() {
       const artist = document.getElementById('input-artist').value.trim();
       const title = document.getElementById('input-title').value.trim();
 
@@ -1281,40 +1377,60 @@
         return;
       }
 
-      const albumData = {
-        artist: artist,
-        title: title,
-        coverUrl: selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
-        style: activeFormatStyle,
-        showText: activeShowText,
-        cropX: activeCropX,
-        cropY: activeCropY
-      };
+      const saveBtn = document.getElementById('modal-save-btn');
+      const originalText = saveBtn.innerText;
+      saveBtn.innerText = 'Saving...';
+      saveBtn.disabled = true;
 
-      if (editingAlbumId) {
-        const idx = albums.findIndex(a => a.id === editingAlbumId);
-        if (idx !== -1) {
-          const updatedAlbum = { ...albumData, id: editingAlbumId };
-          albums[idx] = updatedAlbum;
-          slots = slots.map(slot => (slot && slot.id === editingAlbumId) ? updatedAlbum : slot);
+      try {
+        let base64 = selectedSearchCoverBase64;
+        if (!base64 && selectedSearchCoverUrl) {
+          if (selectedSearchCoverUrl.startsWith('data:image/')) {
+            base64 = selectedSearchCoverUrl;
+          } else {
+            base64 = await imageUrlToBase64(selectedSearchCoverUrl);
+          }
         }
-      } else {
-        const newAlbum = {
-          ...albumData,
-          id: Date.now().toString()
+
+        const albumData = {
+          artist: artist,
+          title: title,
+          coverUrl: selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+          imageBase64: base64 || null,
+          style: activeFormatStyle,
+          showText: activeShowText,
+          cropX: activeCropX,
+          cropY: activeCropY
         };
-        albums.unshift(newAlbum);
 
-        const emptySlotIndex = slots.findIndex(s => s === null);
-        if (emptySlotIndex !== -1) {
-          slots[emptySlotIndex] = newAlbum;
+        if (editingAlbumId) {
+          const idx = albums.findIndex(a => a.id === editingAlbumId);
+          if (idx !== -1) {
+            const updatedAlbum = { ...albumData, id: editingAlbumId };
+            albums[idx] = updatedAlbum;
+            slots = slots.map(slot => (slot && slot.id === editingAlbumId) ? updatedAlbum : slot);
+          }
+        } else {
+          const newAlbum = {
+            ...albumData,
+            id: Date.now().toString()
+          };
+          albums.unshift(newAlbum);
+
+          const emptySlotIndex = slots.findIndex(s => s === null);
+          if (emptySlotIndex !== -1) {
+            slots[emptySlotIndex] = newAlbum;
+          }
         }
-      }
 
-      saveLocalStorage();
-      renderAlbumList();
-      renderGridSlots();
-      closeAddModal();
+        saveLocalStorage();
+        renderAlbumList();
+        renderGridSlots();
+        closeAddModal();
+      } finally {
+        saveBtn.innerText = originalText;
+        saveBtn.disabled = false;
+      }
     }
 
     /* --- HAMA 5028 SHEET GRID RENDERER (DIN A4 PAGE) --- */
@@ -1342,7 +1458,7 @@
             
             ${album ? `
               <div class="w-full h-full relative group">
-                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50)}
+                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50, album.imageBase64)}
                 
                 <div class="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 no-print z-20">
                   <span class="text-[9px] font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">Slot ${i + 1}</span>
@@ -1364,7 +1480,7 @@
           printHTML += `
             <div class="absolute print-no-border"
                  style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;">
-              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50)}
+              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50, album.imageBase64)}
             </div>
           `;
         }
