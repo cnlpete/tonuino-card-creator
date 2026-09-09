@@ -2,7 +2,7 @@ name: Deploy & Auto-Tag GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
   workflow_dispatch:
 
 # Permissions needed to write contents (push tags) and deploy to Pages
