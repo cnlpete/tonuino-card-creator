@@ -1,17 +1,16 @@
-name: Deploy to GitHub Pages
+name: Deploy & Auto-Tag GitHub Pages
 
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
 
-# Grant GITHUB_TOKEN permissions required for Pages deployment
+# Permissions needed to write contents (push tags) and deploy to Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -25,19 +24,101 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history and tags for accurate tag calculation
+
+      - name: Calculate & Push Next Version Tag
+        id: autotag
+        run: |
+          # Fetch all tags from remote
+          git fetch --tags --force
+
+          # Find the latest tag or fallback to v0.0.0
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest existing tag: $LAST_TAG"
+
+          # Extract Major, Minor, Patch integers
+          VERSION_NUM="${LAST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+
+          # Get commits since last tag (or all commits if v0.0.0)
+          if [ "$LAST_TAG" = "v0.0.0" ]; then
+            COMMITS=$(git log --oneline)
+          else
+            COMMITS=$(git log "${LAST_TAG}..HEAD" --oneline)
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "No new commits found since $LAST_TAG. Skipping tag increment."
+            NEW_TAG="$LAST_TAG"
+          else
+            BUMP="none"
+
+            # Check commit messages for breaking changes or prefixes
+            if echo "$COMMITS" | grep -q "BREAKING CHANGE!"; then
+              BUMP="major"
+            else
+              while IFS= read -r line; do
+                # Strip commit hash
+                msg=$(echo "$line" | sed -E 's/^[a-f0-9]+ //')
+
+                # Check conventional commit scope/type patterns (e.g., "feat:", "feat(ui):", "fix:")
+                if [[ "$msg" =~ ^feat(\(.*\))?: ]]; then
+                  [ "$BUMP" != "major" ] && BUMP="minor"
+                elif [[ "$msg" =~ ^(fix|chore|build)(\(.*\))?: ]]; then
+                  [ "$BUMP" == "none" ] && BUMP="patch"
+                fi
+              done <<< "$COMMITS"
+            fi
+
+            # Default to patch bump if commits exist but didn't match specific rules
+            [ "$BUMP" == "none" ] && BUMP="patch"
+
+            # Apply version increment
+            case "$BUMP" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+
+            # Configure git identity for pushing tag
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            echo "Bumping version ($BUMP): $LAST_TAG -> $NEW_TAG"
+            git tag "$NEW_TAG"
+            git push origin "$NEW_TAG"
+          fi
+
+          # Output variable for downstream steps
+          echo "VERSION_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Inject Version into HTML
+        run: |
+          VERSION="${{ steps.autotag.outputs.VERSION_TAG }}"
+          echo "Injecting version $VERSION into index.html"
+          sed -i "s/v1\.0\.0/$VERSION/g" index.html || true
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Inject Version Tag
-        run: |
-          VERSION=$(git describe --tags --always || echo "v1.0.0")
-          sed -i "s/v1\.0\.0-dev/$VERSION/g" index.html
-
       - name: Upload Page Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Root directory containing index.html
           path: '.'
 
       - name: Deploy to GitHub Pages
