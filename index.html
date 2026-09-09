@@ -47,7 +47,7 @@
       }
 
       /* Hide screen UI */
-      header, main, #add-modal, .no-print {
+      header, main, #add-modal, #data-modal, #migration-banner, .no-print {
         display: none !important;
       }
 
@@ -94,6 +94,17 @@
 </head>
 <body class="min-h-screen flex flex-col select-none">
 
+  <!-- Migration Banner Toast -->
+  <div id="migration-banner" class="hidden bg-emerald-600 text-white px-6 py-2.5 shadow-lg flex items-center justify-between z-50 text-xs font-medium no-print">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-circle-check text-base"></i>
+      <span id="migration-banner-text">Successfully restored existing albums from legacy storage!</span>
+    </div>
+    <button onclick="dismissMigrationBanner()" class="hover:bg-emerald-700 px-2 py-1 rounded transition text-xs font-bold">
+      Dismiss
+    </button>
+  </div>
+
   <!-- Header -->
   <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4 no-print">
     <div class="flex items-center space-x-3">
@@ -110,11 +121,14 @@
       <button onclick="openAddModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-md hover:shadow-indigo-500/20">
         <i class="fa-solid fa-plus"></i> Add Card
       </button>
-      <button onclick="autoFillSheet()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium px-4 py-2.5 rounded-lg border border-slate-700 transition flex items-center gap-2">
+      <button onclick="autoFillSheet()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium px-3.5 py-2.5 rounded-lg border border-slate-700 transition flex items-center gap-2">
         <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Fill Sheet
       </button>
       <button onclick="clearSheet()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium px-3 py-2.5 rounded-lg border border-slate-700 transition" title="Clear Grid Slots">
         <i class="fa-solid fa-trash-can"></i>
+      </button>
+      <button onclick="openDataModal()" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 text-sm font-medium px-3.5 py-2.5 rounded-lg border border-slate-700 transition flex items-center gap-2" title="Manage Local Data & Migration">
+        <i class="fa-solid fa-database"></i> Data & Migration
       </button>
       <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30">
         <i class="fa-solid fa-print"></i> Print Sheet
@@ -210,7 +224,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Artist / Series Name</label>
-            <input type="text" id="input-artist" placeholder="e.g. Die drei ???" oninput="updateFormatPreview()" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+            <input type="text" id="input-artist" placeholder="e.g. Die drei ??" oninput="updateFormatPreview()" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
           </div>
           <div>
             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Card / Album Title</label>
@@ -326,12 +340,113 @@
     </div>
   </div>
 
+  <!-- MODAL: Data Management, Migration & JSON Backup -->
+  <div id="data-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4 no-print">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      
+      <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-database text-indigo-400"></i> Local Storage & Migration Manager
+        </h3>
+        <button onclick="closeDataModal()" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark fa-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-6 overflow-y-auto text-xs text-slate-300">
+        
+        <!-- Detected Browser Local Storage Keys -->
+        <div class="space-y-3">
+          <h4 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+            <i class="fa-solid fa-magnifying-glass-chart text-indigo-400"></i> Detected Local Storage Keys
+          </h4>
+          <p class="text-slate-400">The tool scans your browser for existing collections saved under previous app names or legacy keys:</p>
+          
+          <div id="storage-keys-list" class="space-y-2 max-h-40 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800">
+            <!-- Dynamic Storage Keys inserted here -->
+          </div>
+          
+          <button onclick="runManualMigrationScan()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-lg font-semibold flex items-center gap-2 transition">
+            <i class="fa-solid fa-rotate"></i> Re-Scan Browser Storage Keys
+          </button>
+        </div>
+
+        <!-- Export Backup -->
+        <div class="border-t border-slate-800 pt-4 space-y-3">
+          <h4 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+            <i class="fa-solid fa-file-export text-emerald-400"></i> Backup & Export Collection
+          </h4>
+          <p class="text-slate-400">Export your created Tonuino cards and sheet layout to a JSON file or copy to clipboard:</p>
+          
+          <div class="flex flex-wrap gap-2">
+            <button onclick="exportJSONFile()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition">
+              <i class="fa-solid fa-download"></i> Download JSON Backup
+            </button>
+            <button onclick="copyJSONToClipboard()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg font-medium border border-slate-700 flex items-center gap-2 transition">
+              <i class="fa-solid fa-copy"></i> Copy JSON Code
+            </button>
+          </div>
+        </div>
+
+        <!-- Import / Restore Backup -->
+        <div class="border-t border-slate-800 pt-4 space-y-3">
+          <h4 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+            <i class="fa-solid fa-file-import text-amber-400"></i> Restore / Import Collection
+          </h4>
+          <p class="text-slate-400">Import a JSON backup file or paste JSON data below to restore your cards:</p>
+          
+          <div class="space-y-2">
+            <input type="file" id="import-file-input" accept=".json" onchange="importJSONFile(event)" class="text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer">
+            <textarea id="import-json-textarea" rows="3" placeholder="Or paste raw JSON here..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 font-mono text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500"></textarea>
+            <button onclick="importJSONFromText()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition">
+              <i class="fa-solid fa-upload"></i> Restore from Pasted JSON
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="px-6 py-4 bg-slate-950 border-t border-slate-800 flex justify-end">
+        <button onclick="closeDataModal()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-5 py-2.5 rounded-lg transition">
+          Close Manager
+        </button>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Application Logic JavaScript -->
   <script>
     // Configuration & Geometry for Hama 5028 / Herma 5028 DIN A4 Label Paper
     const LABEL_WIDTH = 83.8;  // mm
     const LABEL_HEIGHT = 50.8; // mm
     
+    // Primary storage keys
+    const PRIMARY_CARDS_KEY = 'tonuino_cards';
+    const PRIMARY_SLOTS_KEY = 'tonuino_slots';
+
+    // Legacy keys used across previous iterations/apps to ensure no lost data
+    const LEGACY_CARDS_KEYS = [
+      'tonuino_albums',
+      'tonuino_covers',
+      'tonuino_labels',
+      'tonuino_data',
+      'tonuino_cover_creator',
+      'tonuino_card_creator',
+      'tonuinoCards',
+      'tonuinoAlbums',
+      'tonuino_card_list',
+      'albums',
+      'cards'
+    ];
+
+    const LEGACY_SLOTS_KEYS = [
+      'tonuino_grid',
+      'tonuino_slots_v1',
+      'tonuinoSlots',
+      'slots'
+    ];
+
     let topMargin = 21.5;  // default top margin mm
     let leftMargin = 21.2; // default left margin mm
 
@@ -395,23 +510,302 @@
       initCropDragListeners();
     });
 
+    /* --- MIGRATION & LOCAL STORAGE ENGINE --- */
     function loadLocalStorage() {
-      const savedAlbums = localStorage.getItem('tonuino_cards');
-      const savedSlots = localStorage.getItem('tonuino_slots');
-      
-      albums = savedAlbums ? JSON.parse(savedAlbums) : defaultAlbums;
-      slots = savedSlots ? JSON.parse(savedSlots) : Array(10).fill(null);
-      
-      if (!savedSlots && albums.length > 0) {
-        slots[0] = albums[0];
-        if (albums[1]) slots[1] = albums[1];
-        if (albums[2]) slots[2] = albums[2];
+      let loadedAlbums = null;
+      let loadedSlots = null;
+      let migratedFromKey = null;
+
+      // 1. Try reading from primary key first
+      const savedCards = localStorage.getItem(PRIMARY_CARDS_KEY);
+      if (savedCards) {
+        try {
+          loadedAlbums = JSON.parse(savedCards);
+        } catch(e) {
+          console.error('Error parsing primary cards storage', e);
+        }
+      }
+
+      // 2. If primary key is empty or null, scan legacy keys
+      if (!loadedAlbums || (Array.isArray(loadedAlbums) && loadedAlbums.length === 0)) {
+        for (const key of LEGACY_CARDS_KEYS) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              const items = Array.isArray(parsed) ? parsed : (parsed.albums || parsed.cards || parsed.items || []);
+              if (Array.isArray(items) && items.length > 0) {
+                loadedAlbums = items;
+                migratedFromKey = key;
+                break;
+              }
+            } catch(e) {
+              console.warn(`Could not parse legacy key "${key}":`, e);
+            }
+          }
+        }
+      }
+
+      // 3. Load slots from primary key or legacy keys
+      const savedSlots = localStorage.getItem(PRIMARY_SLOTS_KEY);
+      if (savedSlots) {
+        try {
+          loadedSlots = JSON.parse(savedSlots);
+        } catch(e) {
+          console.error('Error parsing primary slots storage', e);
+        }
+      } else {
+        for (const key of LEGACY_SLOTS_KEYS) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                loadedSlots = parsed;
+                break;
+              }
+            } catch(e) {}
+          }
+        }
+      }
+
+      // Normalize loaded album structures
+      if (loadedAlbums && Array.isArray(loadedAlbums) && loadedAlbums.length > 0) {
+        albums = loadedAlbums.map((item, idx) => ({
+          id: item.id || (Date.now() + idx).toString(),
+          artist: item.artist || item.artistName || item.subtitle || 'Unknown Artist',
+          title: item.title || item.albumTitle || item.name || 'Untitled Card',
+          coverUrl: item.coverUrl || item.cover || item.image || item.img || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+          style: item.style || item.formatStyle || 'split',
+          showText: item.showText !== undefined ? item.showText : true,
+          cropX: item.cropX !== undefined ? item.cropX : 50,
+          cropY: item.cropY !== undefined ? item.cropY : 50
+        }));
+      } else {
+        albums = [...defaultAlbums];
+      }
+
+      // Normalize slot references
+      if (loadedSlots && Array.isArray(loadedSlots)) {
+        slots = loadedSlots.slice(0, 10).map(slot => {
+          if (!slot) return null;
+          // Match with loaded album or preserve object
+          const match = albums.find(a => a.id === slot.id || (a.title === slot.title && a.artist === slot.artist));
+          return match || slot;
+        });
+        while (slots.length < 10) slots.push(null);
+      } else {
+        slots = Array(10).fill(null);
+        if (albums.length > 0) {
+          slots[0] = albums[0] || null;
+          if (albums[1]) slots[1] = albums[1];
+          if (albums[2]) slots[2] = albums[2];
+        }
+      }
+
+      // Finalize and save to primary storage key
+      saveLocalStorage();
+
+      if (migratedFromKey) {
+        showMigrationNotification(migratedFromKey, albums.length);
       }
     }
 
     function saveLocalStorage() {
-      localStorage.setItem('tonuino_cards', JSON.stringify(albums));
-      localStorage.setItem('tonuino_slots', JSON.stringify(slots));
+      localStorage.setItem(PRIMARY_CARDS_KEY, JSON.stringify(albums));
+      localStorage.setItem(PRIMARY_SLOTS_KEY, JSON.stringify(slots));
+    }
+
+    function showMigrationNotification(keyName, cardCount) {
+      const banner = document.getElementById('migration-banner');
+      const text = document.getElementById('migration-banner-text');
+      text.innerText = `Migrated ${cardCount} card(s) from legacy storage key ("${keyName}")! All data preserved.`;
+      banner.classList.remove('hidden');
+    }
+
+    function dismissMigrationBanner() {
+      document.getElementById('migration-banner').classList.add('hidden');
+    }
+
+    /* --- DATA MANAGEMENT MODAL & BACKUP TOOLS --- */
+    function openDataModal() {
+      document.getElementById('data-modal').classList.remove('hidden');
+      renderStorageKeysList();
+    }
+
+    function closeDataModal() {
+      document.getElementById('data-modal').classList.add('hidden');
+    }
+
+    function renderStorageKeysList() {
+      const listEl = document.getElementById('storage-keys-list');
+      const allKeys = [];
+
+      for (let i = 0; i < localStorage.length; i++) {
+        allKeys.push(localStorage.key(i));
+      }
+
+      if (allKeys.length === 0) {
+        listEl.innerHTML = `<p class="text-slate-500 italic p-2 text-[11px]">No keys found in browser local storage.</p>`;
+        return;
+      }
+
+      listEl.innerHTML = allKeys.map(key => {
+        const val = localStorage.getItem(key);
+        let countText = 'Raw Data';
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) countText = `${parsed.length} items`;
+          else if (typeof parsed === 'object') countText = `Object (${Object.keys(parsed).length} keys)`;
+        } catch(e) {}
+
+        const isCurrent = key === PRIMARY_CARDS_KEY || key === PRIMARY_SLOTS_KEY;
+
+        return `
+          <div class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 text-xs">
+            <div class="min-w-0 flex-1 pr-2">
+              <p class="font-mono font-bold ${isCurrent ? 'text-emerald-400' : 'text-slate-200'} truncate">${key}</p>
+              <p class="text-[10px] text-slate-500">${countText}</p>
+            </div>
+            <button onclick="importFromSpecificKey('${key}')" class="bg-indigo-900/60 hover:bg-indigo-600 text-indigo-200 hover:text-white px-2.5 py-1 rounded text-[10px] transition font-medium">
+              Import Key
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function importFromSpecificKey(keyName) {
+      const raw = localStorage.getItem(keyName);
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw);
+        const items = Array.isArray(parsed) ? parsed : (parsed.albums || parsed.cards || parsed.items || []);
+
+        if (Array.isArray(items) && items.length > 0) {
+          const imported = items.map((item, idx) => ({
+            id: item.id || (Date.now() + idx).toString(),
+            artist: item.artist || item.artistName || 'Unknown Artist',
+            title: item.title || item.albumTitle || 'Untitled Card',
+            coverUrl: item.coverUrl || item.cover || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+            style: item.style || 'split',
+            showText: item.showText !== undefined ? item.showText : true,
+            cropX: item.cropX ?? 50,
+            cropY: item.cropY ?? 50
+          }));
+
+          albums = [...imported, ...albums];
+          // Remove duplicates based on ID
+          const seen = new Set();
+          albums = albums.filter(a => {
+            if (seen.has(a.id)) return false;
+            seen.add(a.id);
+            return true;
+          });
+
+          saveLocalStorage();
+          renderAlbumList();
+          renderGridSlots();
+          alert(`Successfully imported ${imported.length} cards from "${keyName}"!`);
+          closeDataModal();
+        } else {
+          alert(`Key "${keyName}" does not contain a valid card list.`);
+        }
+      } catch(e) {
+        alert(`Error parsing key "${keyName}": ` + e.message);
+      }
+    }
+
+    function runManualMigrationScan() {
+      loadLocalStorage();
+      renderAlbumList();
+      renderGridSlots();
+      renderStorageKeysList();
+      alert('Browser local storage scan complete!');
+    }
+
+    function exportJSONFile() {
+      const backupData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        cards: albums,
+        slots: slots
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `tonuino-cards-backup-${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function copyJSONToClipboard() {
+      const backupData = {
+        version: '1.0',
+        cards: albums,
+        slots: slots
+      };
+      navigator.clipboard.writeText(JSON.stringify(backupData, null, 2)).then(() => {
+        alert('JSON backup copied to clipboard!');
+      });
+    }
+
+    function importJSONFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        processJSONImport(evt.target.result);
+      };
+      reader.readAsText(file);
+    }
+
+    function importJSONFromText() {
+      const text = document.getElementById('import-json-textarea').value.trim();
+      if (!text) {
+        alert('Please paste JSON code to restore.');
+        return;
+      }
+      processJSONImport(text);
+    }
+
+    function processJSONImport(jsonString) {
+      try {
+        const parsed = JSON.parse(jsonString);
+        const importedCards = parsed.cards || (Array.isArray(parsed) ? parsed : null);
+
+        if (!importedCards || !Array.isArray(importedCards)) {
+          alert('Invalid JSON structure. Could not find cards array.');
+          return;
+        }
+
+        albums = importedCards.map((item, idx) => ({
+          id: item.id || (Date.now() + idx).toString(),
+          artist: item.artist || 'Unknown Artist',
+          title: item.title || 'Untitled Card',
+          coverUrl: item.coverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+          style: item.style || 'split',
+          showText: item.showText !== undefined ? item.showText : true,
+          cropX: item.cropX ?? 50,
+          cropY: item.cropY ?? 50
+        }));
+
+        if (parsed.slots && Array.isArray(parsed.slots)) {
+          slots = parsed.slots.slice(0, 10);
+        }
+
+        saveLocalStorage();
+        renderAlbumList();
+        renderGridSlots();
+        alert(`Successfully imported ${albums.length} cards from backup!`);
+        closeDataModal();
+      } catch(err) {
+        alert('Failed to parse JSON string: ' + err.message);
+      }
     }
 
     /* --- MARGIN & CALIBRATION CONTROLS --- */
@@ -487,7 +881,6 @@
       `).join('');
     }
 
-    /* --- CLONE CARD FEATURE --- */
     function cloneAlbum(id) {
       const original = albums.find(a => a.id === id);
       if (!original) return;
