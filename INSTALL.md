@@ -10,7 +10,7 @@ Below are the common ways to run or host the application.
 
 1. Clone or download the repository:
    ```bash
-   git clone [https://github.com/your-username/tonuino-card-creator.git](https://github.com/your-username/tonuino-card-creator.git)
+   git clone [https://github.com/cnlpete/tonuino-card-creator.git](https://github.com/cnlpete/tonuino-card-creator.git)
    cd tonuino-card-creator
    ```
 2. Double-click `index.html` or open it directly in your web browser:
@@ -26,12 +26,13 @@ Below are the common ways to run or host the application.
 
 ## Option 2: GitHub Pages (Recommended for Free Cloud Hosting)
 
-1. Push this repository to your GitHub account.
+Live Demo: [https://cnlpete.github.io/tonuino-card-creator/](https://cnlpete.github.io/tonuino-card-creator/)
+
+1. Push this repository to your GitHub account (e.g. `cnlpete/tonuino-card-creator`).
 2. Go to **Settings** > **Pages** in your GitHub repository.
 3. Under **Build and deployment**:
-   - **Source**: Select `Deploy from a branch`.
-   - **Branch**: Select `main` (or `master`), branch root `/`, and click **Save**.
-4. Your application will be live at `https://<your-username>.github.io/<repository-name>/`.
+   - **Source**: Select `GitHub Actions`.
+4. On every push to `master`, the workflow automatically tags the release and deploys to GitHub Pages.
 
 ---
 
