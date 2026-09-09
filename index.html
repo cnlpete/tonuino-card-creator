@@ -70,7 +70,7 @@
     }
   </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col select-none">
 
   <!-- Header -->
   <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4 no-print">
@@ -258,7 +258,7 @@
               <div class="p-2.5 rounded-lg border border-slate-700 bg-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/40 text-center transition">
                 <i class="fa-solid fa-crop-simple block mb-1 text-indigo-400"></i>
                 <span class="text-[11px] font-medium block">Fill / Crop</span>
-                <span class="text-[9px] text-slate-400">Expand to fit rectangle</span>
+                <span class="text-[9px] text-slate-400">Expand to fit & drag cutout</span>
               </div>
             </label>
 
@@ -281,10 +281,13 @@
             </label>
           </div>
 
-          <!-- Selected Format Preview -->
+          <!-- Selected Format Preview with Drag Support -->
           <div class="mt-3 bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
-            <span class="text-[10px] text-slate-400 uppercase tracking-widest mb-2">Live Format Preview (83.8mm × 50.8mm)</span>
-            <div id="format-preview-box" class="w-64 label-ratio bg-black rounded shadow overflow-hidden relative border border-slate-700">
+            <div class="flex items-center justify-between w-64 mb-2 text-[10px]">
+              <span class="text-slate-400 uppercase tracking-widest">Live Format Preview</span>
+              <span id="crop-hint" class="text-indigo-400 font-semibold hidden"><i class="fa-solid fa-up-down-left-right mr-1"></i> Drag inside box to pan</span>
+            </div>
+            <div id="format-preview-box" class="w-64 label-ratio bg-black rounded shadow overflow-hidden relative border border-slate-700 select-none touch-none">
               <!-- Rendered Preview Here -->
             </div>
           </div>
@@ -304,9 +307,6 @@
   <!-- Application Logic JavaScript -->
   <script>
     // Configuration & Geometry for Hama 5028 / Herma 5028 DIN A4 Label Paper
-    // DIN A4 = 210mm x 297mm
-    // 10 labels: 2 columns x 5 rows
-    // Label size: 83.8mm wide x 50.8mm high
     const LABEL_WIDTH = 83.8;  // mm
     const LABEL_HEIGHT = 50.8; // mm
     
@@ -319,6 +319,15 @@
     let selectedSearchCoverUrl = '';
     let activeFormatStyle = 'split';
     let activeShowText = true;
+    let activeCropX = 50; // percentage offset
+    let activeCropY = 50; // percentage offset
+
+    // Drag-to-crop State
+    let isDraggingCrop = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let startCropX = 50;
+    let startCropY = 50;
 
     // Initial Default Seed Data
     const defaultAlbums = [
@@ -327,8 +336,10 @@
         artist: 'Pink Floyd',
         title: 'The Dark Side of the Moon',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/90/a6/55/90a6552a-9694-811c-2236-efd378051772/886443702170.jpg/600x600bb.jpg',
-        style: 'split',
-        showText: true
+        style: 'crop',
+        showText: true,
+        cropX: 50,
+        cropY: 50
       },
       {
         id: '2',
@@ -336,7 +347,9 @@
         title: 'Random Access Memories',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/bf/2d/72/bf2d72a8-0853-e993-e4dd-b54199c017ef/886443927085.jpg/600x600bb.jpg',
         style: 'split',
-        showText: true
+        showText: true,
+        cropX: 50,
+        cropY: 50
       },
       {
         id: '3',
@@ -344,7 +357,9 @@
         title: 'Rumours',
         coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/bf/02/76/bf027600-4b96-bc9c-95ea-6b215a7702f7/081227967789.jpg/600x600bb.jpg',
         style: 'split',
-        showText: true
+        showText: true,
+        cropX: 50,
+        cropY: 50
       }
     ];
 
@@ -354,6 +369,7 @@
       renderAlbumList();
       renderGridSlots();
       updateSheetMargins();
+      initCropDragListeners();
     });
 
     function loadLocalStorage() {
@@ -363,7 +379,6 @@
       albums = savedAlbums ? JSON.parse(savedAlbums) : defaultAlbums;
       slots = savedSlots ? JSON.parse(savedSlots) : Array(10).fill(null);
       
-      // Assign initial default albums to first slots if empty
       if (!savedSlots && albums.length > 0) {
         slots[0] = albums[0];
         if (albums[1]) slots[1] = albums[1];
@@ -407,7 +422,7 @@
       listEl.innerHTML = albums.map(album => `
         <div class="bg-slate-800/70 border border-slate-700/60 rounded-xl p-3 flex gap-3 items-center hover:border-slate-600 transition group">
           <div class="w-12 h-12 bg-slate-900 rounded-lg overflow-hidden flex-shrink-0 border border-slate-700">
-            <img src="${album.coverUrl}" class="w-full h-full object-cover" alt="Cover" onerror="this.src='https://via.placeholder.com/150?text=No+Cover'">
+            <img src="${album.coverUrl}" class="w-full h-full object-cover" style="object-position: ${album.cropX ?? 50}% ${album.cropY ?? 50}%;" alt="Cover" onerror="this.src='https://via.placeholder.com/150?text=No+Cover'">
           </div>
           
           <div class="flex-1 min-w-0">
@@ -424,7 +439,6 @@
               <button class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded font-medium flex items-center gap-1">
                 <i class="fa-solid fa-plus"></i> Slot
               </button>
-              <!-- Slot Selector Dropdown -->
               <div class="hidden group-hover/btn:flex absolute right-0 top-0 bg-slate-900 border border-slate-700 rounded-lg p-1.5 shadow-xl z-20 grid grid-cols-5 gap-1 w-36">
                 ${Array.from({length: 10}).map((_, i) => `
                   <button onclick="placeInSlot('${album.id}', ${i})" class="text-[10px] font-bold p-1 hover:bg-indigo-600 text-slate-200 rounded text-center">
@@ -444,7 +458,6 @@
 
     function deleteAlbum(id) {
       albums = albums.filter(a => a.id !== id);
-      // Clear from slots if present
       slots = slots.map(s => s && s.id === id ? null : s);
       saveLocalStorage();
       renderAlbumList();
@@ -460,6 +473,8 @@
       document.getElementById('search-results').innerHTML = '';
       document.getElementById('results-heading').classList.add('hidden');
       selectedSearchCoverUrl = '';
+      activeCropX = 50;
+      activeCropY = 50;
       updateFormatPreview();
     }
 
@@ -492,7 +507,6 @@
       const results = [];
 
       try {
-        // 1. iTunes Search API (Returns high-res artwork)
         const query = encodeURIComponent(`${artist} ${title}`);
         const itunesUrl = `https://itunes.apple.com/search?term=${query}&entity=album&limit=9`;
         
@@ -516,7 +530,6 @@
       }
 
       try {
-        // 2. Fallback / Supplemental Search: MusicBrainz + CoverArt Archive API
         if (results.length < 3) {
           const mbQuery = encodeURIComponent(`artist:"${artist}" AND release:"${title}"`);
           const mbUrl = `https://musicbrainz.org/ws/2/release/?query=${mbQuery}&fmt=json&limit=5`;
@@ -565,7 +578,6 @@
         </div>
       `).join('');
 
-      // Auto select first search result
       if (results.length > 0) {
         selectSearchCover(results[0].coverUrl, results[0].artist, results[0].title);
       }
@@ -575,6 +587,8 @@
       selectedSearchCoverUrl = url;
       if (artist) document.getElementById('input-artist').value = artist;
       if (title) document.getElementById('input-title').value = title;
+      activeCropX = 50;
+      activeCropY = 50;
       updateFormatPreview();
     }
 
@@ -585,6 +599,8 @@
         return;
       }
       selectedSearchCoverUrl = url;
+      activeCropX = 50;
+      activeCropY = 50;
       updateFormatPreview();
     }
 
@@ -594,6 +610,8 @@
         const reader = new FileReader();
         reader.onload = function(evt) {
           selectedSearchCoverUrl = evt.target.result;
+          activeCropX = 50;
+          activeCropY = 50;
           updateFormatPreview();
         };
         reader.readAsDataURL(file);
@@ -614,12 +632,22 @@
       const coverUrl = selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=Select+Cover';
 
       const previewBox = document.getElementById('format-preview-box');
-      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle, activeShowText);
+      const cropHint = document.getElementById('crop-hint');
+
+      if (activeFormatStyle === 'crop') {
+        cropHint.classList.remove('hidden');
+        previewBox.style.cursor = 'grab';
+      } else {
+        cropHint.classList.add('hidden');
+        previewBox.style.cursor = 'default';
+      }
+
+      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle, activeShowText, activeCropX, activeCropY);
     }
 
-    function generateFormattedLabelHTML(artist, title, coverUrl, style, showText = true) {
+    function generateFormattedLabelHTML(artist, title, coverUrl, style, showText = true, cropX = 50, cropY = 50) {
       const textOverlayHTML = showText ? `
-        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-1.5 text-white z-10">
+        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent p-1.5 text-white z-10 pointer-events-none">
           <p class="text-[9px] font-bold truncate leading-tight">${escapeHtml(title)}</p>
           <p class="text-[7px] text-indigo-200 truncate mt-0.5">${escapeHtml(artist)}</p>
         </div>
@@ -641,7 +669,7 @@
         `;
 
         return `
-          <div class="w-full h-full bg-slate-950 flex items-center overflow-hidden text-white font-sans">
+          <div class="w-full h-full bg-slate-950 flex items-center overflow-hidden text-white font-sans pointer-events-none">
             <div class="h-full aspect-square flex-shrink-0 bg-black">
               <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
             </div>
@@ -653,13 +681,16 @@
       } else if (style === 'crop') {
         return `
           <div class="w-full h-full bg-black relative overflow-hidden">
-            <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+            <img src="${coverUrl}" 
+                 class="crop-target-img w-full h-full object-cover select-none pointer-events-none" 
+                 style="object-position: ${cropX}% ${cropY}%;" 
+                 alt="Cover">
             ${textOverlayHTML}
           </div>
         `;
       } else if (style === 'blur') {
         return `
-          <div class="w-full h-full relative overflow-hidden flex items-center justify-center bg-black">
+          <div class="w-full h-full relative overflow-hidden flex items-center justify-center bg-black pointer-events-none">
             <img src="${coverUrl}" class="absolute inset-0 w-full h-full object-cover blur-md opacity-50 scale-110" alt="Background">
             <div class="relative h-full aspect-square z-10 shadow-lg">
               <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
@@ -669,7 +700,7 @@
         `;
       } else { // contain
         return `
-          <div class="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden">
+          <div class="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden pointer-events-none">
             <div class="h-full aspect-square border-x border-slate-800">
               <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
             </div>
@@ -677,6 +708,61 @@
           </div>
         `;
       }
+    }
+
+    /* --- DRAG TO CROP INTERACTION LOGIC --- */
+    function initCropDragListeners() {
+      const previewBox = document.getElementById('format-preview-box');
+
+      function onStart(e) {
+        if (activeFormatStyle !== 'crop') return;
+        isDraggingCrop = true;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        dragStartX = clientX;
+        dragStartY = clientY;
+        startCropX = activeCropX;
+        startCropY = activeCropY;
+        previewBox.style.cursor = 'grabbing';
+      }
+
+      function onMove(e) {
+        if (!isDraggingCrop || activeFormatStyle !== 'crop') return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        const rect = previewBox.getBoundingClientRect();
+        const deltaX = clientX - dragStartX;
+        const deltaY = clientY - dragStartY;
+
+        // Map pixel drag delta to percentage offset
+        let newX = startCropX - (deltaX / rect.width) * 100;
+        let newY = startCropY - (deltaY / rect.height) * 100;
+
+        activeCropX = Math.max(0, Math.min(100, Math.round(newX)));
+        activeCropY = Math.max(0, Math.min(100, Math.round(newY)));
+
+        // Live update image DOM style directly for smooth drag
+        const img = previewBox.querySelector('.crop-target-img');
+        if (img) {
+          img.style.objectPosition = `${activeCropX}% ${activeCropY}%`;
+        }
+      }
+
+      function onEnd() {
+        if (isDraggingCrop) {
+          isDraggingCrop = false;
+          previewBox.style.cursor = activeFormatStyle === 'crop' ? 'grab' : 'default';
+        }
+      }
+
+      previewBox.addEventListener('mousedown', onStart);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onEnd);
+
+      previewBox.addEventListener('touchstart', onStart, { passive: true });
+      window.addEventListener('touchmove', onMove, { passive: true });
+      window.addEventListener('touchend', onEnd);
     }
 
     function saveSelectedAlbum() {
@@ -694,12 +780,13 @@
         title: title,
         coverUrl: selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
         style: activeFormatStyle,
-        showText: activeShowText
+        showText: activeShowText,
+        cropX: activeCropX,
+        cropY: activeCropY
       };
 
       albums.unshift(newAlbum);
 
-      // Auto place in first available slot if empty
       const emptySlotIndex = slots.findIndex(s => s === null);
       if (emptySlotIndex !== -1) {
         slots[emptySlotIndex] = newAlbum;
@@ -720,18 +807,15 @@
       let previewHTML = '';
       let printHTML = '';
 
-      // Grid geometry: 2 columns, 5 rows
       for (let i = 0; i < 10; i++) {
-        const col = i % 2; // 0 or 1
-        const row = Math.floor(i / 2); // 0..4
+        const col = i % 2;
+        const row = Math.floor(i / 2);
 
-        // Calculated coordinates in mm
         const leftMm = leftMargin + (col * LABEL_WIDTH);
         const topMm = topMargin + (row * LABEL_HEIGHT);
 
         const album = slots[i];
 
-        // Screen Preview Slot
         previewHTML += `
           <div class="absolute ${showBorder ? 'border border-slate-300 border-dashed' : ''} group"
                style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;"
@@ -739,9 +823,8 @@
             
             ${album ? `
               <div class="w-full h-full relative group">
-                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false)}
+                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50)}
                 
-                <!-- Quick Controls Overlay -->
                 <div class="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 no-print z-20">
                   <span class="text-[9px] font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">Slot ${i + 1}</span>
                   <button onclick="removeFromSlot(${i})" class="bg-red-600 text-white p-1.5 rounded hover:bg-red-500 text-xs" title="Remove from slot">
@@ -758,12 +841,11 @@
           </div>
         `;
 
-        // Exact Printable Slot for @media print
         if (album) {
           printHTML += `
             <div class="absolute print-no-border"
                  style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;">
-              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false)}
+              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50)}
             </div>
           `;
         }
@@ -812,13 +894,11 @@
         openAddModal();
         return;
       }
-      // Place the most recent album or open selection
       slots[slotIndex] = albums[0];
       saveLocalStorage();
       renderGridSlots();
     }
 
-    // Helper: HTML Escaping
     function escapeHtml(str) {
       if (!str) return '';
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
