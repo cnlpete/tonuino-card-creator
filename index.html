@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Album Cover Manager & Hama 5028 Printer</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+
+    /* Target 83.8mm x 50.8mm format aspect ratio (~1.65:1) */
+    .label-ratio {
+      aspect-ratio: 83.8 / 50.8;
+    }
+
+    /* Print Calibration & Layout Engine */
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #print-section, #print-section * {
+        visibility: visible !important;
+      }
+      #print-section {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        background: white;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 0mm;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-border {
+        border: 0.5pt dashed #cbd5e1 !important; /* Subtle cut lines if needed */
+      }
+      .print-no-border {
+        border: none !important;
+      }
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4 no-print">
+    <div class="flex items-center space-x-3">
+      <div class="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-500/30">
+        <i class="fa-solid fa-compact-disc fa-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight text-white">Album Label Studio</h1>
+        <p class="text-xs text-slate-400">Targeted for Hama / Herma 5028 (83.8 x 50.8 mm · 10 per A4)</p>
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-3">
+      <button onclick="openAddModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-md hover:shadow-indigo-500/20">
+        <i class="fa-solid fa-plus"></i> Add Album
+      </button>
+      <button onclick="autoFillSheet()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium px-4 py-2.5 rounded-lg border border-slate-700 transition flex items-center gap-2">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Fill Sheet
+      </button>
+      <button onclick="clearSheet()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium px-3 py-2.5 rounded-lg border border-slate-700 transition" title="Clear Grid Slots">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+      <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30">
+        <i class="fa-solid fa-print"></i> Print Sheet
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden no-print">
+    
+    <!-- Sidebar / Library Panel -->
+    <aside class="w-full lg:w-96 bg-slate-900 border-r border-slate-800 flex flex-col h-auto lg:h-[calc(100vh-73px)]">
+      <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+        <h2 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-layer-group text-indigo-400"></i> My Albums (<span id="album-count">0</span>)
+        </h2>
+        <span class="text-xs text-slate-400">Click slot button to place</span>
+      </div>
+
+      <!-- Album List -->
+      <div id="album-list" class="flex-1 overflow-y-auto p-4 space-y-3">
+        <!-- Dynamic Album Cards Inserted Here -->
+      </div>
+    </aside>
+
+    <!-- Main Workspace / Interactive DIN A4 Preview -->
+    <section class="flex-1 bg-slate-950 p-6 overflow-y-auto flex flex-col items-center">
+      
+      <!-- Toolbar Controls -->
+      <div class="w-full max-w-4xl mb-4 flex flex-wrap justify-between items-center bg-slate-900 border border-slate-800 p-3.5 rounded-xl text-xs text-slate-300 gap-4">
+        <div class="flex items-center space-x-4">
+          <span class="font-medium text-slate-200 flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders text-indigo-400"></i> Calibration Offsets:
+          </span>
+          <label class="flex items-center gap-1">
+            Top:
+            <input type="number" id="top-offset" value="21.5" step="0.5" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
+          </label>
+          <label class="flex items-center gap-1">
+            Left:
+            <input type="number" id="left-offset" value="21.2" step="0.5" onchange="updateSheetMargins()" class="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"> mm
+          </label>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="show-borders" checked onchange="toggleBorderGuide()" class="rounded bg-slate-800 border-slate-700 text-indigo-600 focus:ring-0">
+            Show Grid Cut Lines (Screen Only)
+          </label>
+        </div>
+      </div>
+
+      <!-- DIN A4 Preview Container -->
+      <div class="relative bg-white text-slate-900 rounded-sm shadow-2xl transition-transform duration-300 overflow-hidden" 
+           style="width: 210mm; min-height: 297mm; height: 297mm; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);" 
+           id="a4-preview-container">
+        
+        <!-- Sheet Header Info Watermark (screen only) -->
+        <div class="absolute top-2 left-0 w-full text-center text-[9px] text-slate-400 font-mono uppercase tracking-widest no-print select-none">
+          DIN A4 Sheet • Hama 5028 / Herma 5028 Grid (83.8mm x 50.8mm)
+        </div>
+
+        <!-- 10 Slot Grid Layout -->
+        <div id="grid-container" class="absolute w-full h-full">
+          <!-- 10 Absolute Positioned Slots Generated by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- PRINT SECTION (Only rendered during print) -->
+  <div id="print-section" class="hidden">
+    <div id="print-grid-container" class="relative w-[210mm] h-[297mm]">
+      <!-- Cloned print items inserted here -->
+    </div>
+  </div>
+
+  <!-- MODAL: Add / Search Album -->
+  <div id="add-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4 no-print">
+    <div class="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      
+      <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-magnifying-glass text-indigo-400"></i> Search Album Artwork
+        </h3>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark fa-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 overflow-y-auto">
+        <!-- Search Inputs -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Artist Name</label>
+            <input type="text" id="input-artist" placeholder="e.g. Pink Floyd" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Album Title</label>
+            <input type="text" id="input-title" placeholder="e.g. The Dark Side of the Moon" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button onclick="searchCovers()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-magnifying-glass"></i> Search iTunes & CoverArt Archive
+          </button>
+          <button onclick="toggleManualInput()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 px-3 rounded-lg border border-slate-700">
+            <i class="fa-solid fa-link"></i> Direct URL / File Upload
+          </button>
+        </div>
+
+        <!-- Manual URL / File Upload Fallback -->
+        <div id="manual-upload-section" class="hidden bg-slate-800/60 p-4 rounded-xl border border-slate-700 space-y-3">
+          <p class="text-xs text-slate-300 font-medium">Alternative: Provide custom image URL (Spotify, Amazon, etc.) or upload local image file:</p>
+          <div class="flex gap-2">
+            <input type="text" id="input-custom-url" placeholder="Paste direct image link (https://...)" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white">
+            <button onclick="useCustomUrl()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-2 rounded-lg font-medium">Use URL</button>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <span>Or upload local file:</span>
+            <input type="file" id="input-file" accept="image/*" onchange="handleFileUpload(event)" class="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:bg-slate-700 file:text-white hover:file:bg-slate-600">
+          </div>
+        </div>
+
+        <!-- Search Status Spinner -->
+        <div id="search-status" class="hidden text-center py-6">
+          <i class="fa-solid fa-circle-notch fa-spin text-indigo-400 text-2xl mb-2"></i>
+          <p class="text-xs text-slate-400">Searching music databases for covers...</p>
+        </div>
+
+        <!-- Search Results Grid -->
+        <div id="search-results-container" class="space-y-2">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 hidden" id="results-heading">Select Cover Artwork:</h4>
+          <div id="search-results" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-60 overflow-y-auto pr-1"></div>
+        </div>
+
+        <!-- Format Options Section -->
+        <div class="border-t border-slate-800 pt-4 space-y-3">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Cover Resize & Formatting Style (Format: 83.8 x 50.8 mm)
+          </label>
+          
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <label class="cursor-pointer">
+              <input type="radio" name="format-style" value="split" checked onchange="updateFormatPreview()" class="peer sr-only">
+              <div class="p-2.5 rounded-lg border border-slate-700 bg-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/40 text-center transition">
+                <i class="fa-solid fa-table-columns block mb-1 text-indigo-400"></i>
+                <span class="text-[11px] font-medium block">Cover + Text</span>
+                <span class="text-[9px] text-slate-400">Square cover + Artist/Title</span>
+              </div>
+            </label>
+
+            <label class="cursor-pointer">
+              <input type="radio" name="format-style" value="crop" onchange="updateFormatPreview()" class="peer sr-only">
+              <div class="p-2.5 rounded-lg border border-slate-700 bg-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/40 text-center transition">
+                <i class="fa-solid fa-crop-simple block mb-1 text-indigo-400"></i>
+                <span class="text-[11px] font-medium block">Fill / Crop</span>
+                <span class="text-[9px] text-slate-400">Expand to fit rectangle</span>
+              </div>
+            </label>
+
+            <label class="cursor-pointer">
+              <input type="radio" name="format-style" value="blur" onchange="updateFormatPreview()" class="peer sr-only">
+              <div class="p-2.5 rounded-lg border border-slate-700 bg-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/40 text-center transition">
+                <i class="fa-solid fa-wand-magic block mb-1 text-indigo-400"></i>
+                <span class="text-[11px] font-medium block">Ambient Blur</span>
+                <span class="text-[9px] text-slate-400">Square cover + blurred fill</span>
+              </div>
+            </label>
+
+            <label class="cursor-pointer">
+              <input type="radio" name="format-style" value="contain" onchange="updateFormatPreview()" class="peer sr-only">
+              <div class="p-2.5 rounded-lg border border-slate-700 bg-slate-800 peer-checked:border-indigo-500 peer-checked:bg-indigo-950/40 text-center transition">
+                <i class="fa-solid fa-expand block mb-1 text-indigo-400"></i>
+                <span class="text-[11px] font-medium block">Letterbox</span>
+                <span class="text-[9px] text-slate-400">Square cover centered</span>
+              </div>
+            </label>
+          </div>
+
+          <!-- Selected Format Preview -->
+          <div class="mt-3 bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
+            <span class="text-[10px] text-slate-400 uppercase tracking-widest mb-2">Live Format Preview (83.8mm × 50.8mm)</span>
+            <div id="format-preview-box" class="w-64 label-ratio bg-black rounded shadow overflow-hidden relative border border-slate-700">
+              <!-- Rendered Preview Here -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-4 bg-slate-950 border-t border-slate-800 flex justify-end gap-3">
+        <button onclick="closeAddModal()" class="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white transition">Cancel</button>
+        <button onclick="saveSelectedAlbum()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-5 py-2.5 rounded-lg shadow-lg shadow-indigo-600/30 transition">
+          Save Album to Collection
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Application Logic JavaScript -->
+  <script>
+    // Configuration & Geometry for Hama 5028 / Herma 5028 DIN A4 Label Paper
+    // DIN A4 = 210mm x 297mm
+    // 10 labels: 2 columns x 5 rows
+    // Label size: 83.8mm wide x 50.8mm high
+    const LABEL_WIDTH = 83.8;  // mm
+    const LABEL_HEIGHT = 50.8; // mm
+    
+    let topMargin = 21.5;  // default top margin mm
+    let leftMargin = 21.2; // default left margin mm
+
+    // State Management
+    let albums = [];
+    let slots = Array(10).fill(null); // 10 Grid Positions (0..9)
+    let selectedSearchCoverUrl = '';
+    let activeFormatStyle = 'split';
+
+    // Initial Default Seed Data
+    const defaultAlbums = [
+      {
+        id: '1',
+        artist: 'Pink Floyd',
+        title: 'The Dark Side of the Moon',
+        coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/90/a6/55/90a6552a-9694-811c-2236-efd378051772/886443702170.jpg/600x600bb.jpg',
+        style: 'split'
+      },
+      {
+        id: '2',
+        artist: 'Daft Punk',
+        title: 'Random Access Memories',
+        coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/bf/2d/72/bf2d72a8-0853-e993-e4dd-b54199c017ef/886443927085.jpg/600x600bb.jpg',
+        style: 'split'
+      },
+      {
+        id: '3',
+        artist: 'Fleetwood Mac',
+        title: 'Rumours',
+        coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/bf/02/76/bf027600-4b96-bc9c-95ea-6b215a7702f7/081227967789.jpg/600x600bb.jpg',
+        style: 'split'
+      }
+    ];
+
+    // Initialize App
+    window.addEventListener('DOMContentLoaded', () => {
+      loadLocalStorage();
+      renderAlbumList();
+      renderGridSlots();
+      updateSheetMargins();
+    });
+
+    function loadLocalStorage() {
+      const savedAlbums = localStorage.getItem('hama_albums');
+      const savedSlots = localStorage.getItem('hama_slots');
+      
+      albums = savedAlbums ? JSON.parse(savedAlbums) : defaultAlbums;
+      slots = savedSlots ? JSON.parse(savedSlots) : Array(10).fill(null);
+      
+      // Assign initial default albums to first slots if empty
+      if (!savedSlots && albums.length > 0) {
+        slots[0] = albums[0];
+        if (albums[1]) slots[1] = albums[1];
+        if (albums[2]) slots[2] = albums[2];
+      }
+    }
+
+    function saveLocalStorage() {
+      localStorage.setItem('hama_albums', JSON.stringify(albums));
+      localStorage.setItem('hama_slots', JSON.stringify(slots));
+    }
+
+    /* --- MARGIN & CALIBRATION CONTROLS --- */
+    function updateSheetMargins() {
+      topMargin = parseFloat(document.getElementById('top-offset').value) || 21.5;
+      leftMargin = parseFloat(document.getElementById('left-offset').value) || 21.2;
+      renderGridSlots();
+    }
+
+    function toggleBorderGuide() {
+      renderGridSlots();
+    }
+
+    /* --- ALBUM MANAGEMENT --- */
+    function renderAlbumList() {
+      const listEl = document.getElementById('album-list');
+      const countEl = document.getElementById('album-count');
+      countEl.innerText = albums.length;
+
+      if (albums.length === 0) {
+        listEl.innerHTML = `
+          <div class="text-center py-8 px-4 text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+            <i class="fa-solid fa-compact-disc text-3xl mb-2 text-slate-700"></i>
+            <p>No albums added yet.</p>
+            <p class="mt-1">Click "Add Album" above to start!</p>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = albums.map(album => `
+        <div class="bg-slate-800/70 border border-slate-700/60 rounded-xl p-3 flex gap-3 items-center hover:border-slate-600 transition group">
+          <div class="w-12 h-12 bg-slate-900 rounded-lg overflow-hidden flex-shrink-0 border border-slate-700">
+            <img src="${album.coverUrl}" class="w-full h-full object-cover" alt="Cover" onerror="this.src='https://via.placeholder.com/150?text=No+Cover'">
+          </div>
+          
+          <div class="flex-1 min-w-0">
+            <h4 class="text-xs font-bold text-white truncate">${escapeHtml(album.title)}</h4>
+            <p class="text-[11px] text-slate-400 truncate">${escapeHtml(album.artist)}</p>
+            <span class="inline-block mt-1 text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded uppercase">${album.style || 'split'}</span>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <div class="relative group/btn">
+              <button class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded font-medium flex items-center gap-1">
+                <i class="fa-solid fa-plus"></i> Slot
+              </button>
+              <!-- Slot Selector Dropdown -->
+              <div class="hidden group-hover/btn:flex absolute right-0 top-0 bg-slate-900 border border-slate-700 rounded-lg p-1.5 shadow-xl z-20 grid grid-cols-5 gap-1 w-36">
+                ${Array.from({length: 10}).map((_, i) => `
+                  <button onclick="placeInSlot('${album.id}', ${i})" class="text-[10px] font-bold p-1 hover:bg-indigo-600 text-slate-200 rounded text-center">
+                    ${i + 1}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <button onclick="deleteAlbum('${album.id}')" class="text-slate-500 hover:text-red-400 text-xs self-end p-1 transition" title="Delete Album">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function deleteAlbum(id) {
+      albums = albums.filter(a => a.id !== id);
+      // Clear from slots if present
+      slots = slots.map(s => s && s.id === id ? null : s);
+      saveLocalStorage();
+      renderAlbumList();
+      renderGridSlots();
+    }
+
+    /* --- SEARCH & COVER ART RETRIEVAL --- */
+    function openAddModal() {
+      document.getElementById('add-modal').classList.remove('hidden');
+      document.getElementById('input-artist').value = '';
+      document.getElementById('input-title').value = '';
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('results-heading').classList.add('hidden');
+      selectedSearchCoverUrl = '';
+      updateFormatPreview();
+    }
+
+    function closeAddModal() {
+      document.getElementById('add-modal').classList.add('hidden');
+    }
+
+    function toggleManualInput() {
+      const section = document.getElementById('manual-upload-section');
+      section.classList.toggle('hidden');
+    }
+
+    async function searchCovers() {
+      const artist = document.getElementById('input-artist').value.trim();
+      const title = document.getElementById('input-title').value.trim();
+
+      if (!artist && !title) {
+        alert('Please enter an Artist or Album Title to search.');
+        return;
+      }
+
+      const statusEl = document.getElementById('search-status');
+      const resultsEl = document.getElementById('search-results');
+      const headingEl = document.getElementById('results-heading');
+
+      statusEl.classList.remove('hidden');
+      resultsEl.innerHTML = '';
+      headingEl.classList.add('hidden');
+
+      const results = [];
+
+      try {
+        // 1. iTunes Search API (Returns high-res artwork)
+        const query = encodeURIComponent(`${artist} ${title}`);
+        const itunesUrl = `https://itunes.apple.com/search?term=${query}&entity=album&limit=9`;
+        
+        const res = await fetch(itunesUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results) {
+            data.results.forEach(item => {
+              // High resolution URL trick for iTunes (replace 100x100bb with 600x600bb)
+              const highResCover = item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '600x600bb') : '';
+              results.push({
+                source: 'iTunes',
+                artist: item.artistName,
+                title: item.collectionName,
+                coverUrl: highResCover
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('iTunes API fetch error:', err);
+      }
+
+      try {
+        // 2. Fallback / Supplemental Search: MusicBrainz + CoverArt Archive API
+        if (results.length < 3) {
+          const mbQuery = encodeURIComponent(`artist:"${artist}" AND release:"${title}"`);
+          const mbUrl = `https://musicbrainz.org/ws/2/release/?query=${mbQuery}&fmt=json&limit=5`;
+          const mbRes = await fetch(mbUrl);
+          if (mbRes.ok) {
+            const mbData = await mbRes.json();
+            if (mbData.releases) {
+              mbData.releases.forEach(rel => {
+                const coverUrl = `https://coverartarchive.org/release/${rel.id}/front-500`;
+                results.push({
+                  source: 'CoverArtArchive',
+                  artist: rel['artist-credit'] ? rel['artist-credit'][0]?.name : artist,
+                  title: rel.title,
+                  coverUrl: coverUrl
+                });
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('MusicBrainz API fetch error:', err);
+      }
+
+      statusEl.classList.add('hidden');
+
+      if (results.length === 0) {
+        resultsEl.innerHTML = `
+          <div class="col-span-full text-center py-4 text-xs text-slate-400">
+            No covers found automatically. You can paste a direct Spotify/Amazon image link or upload an image file using the button above.
+          </div>
+        `;
+        return;
+      }
+
+      headingEl.classList.remove('hidden');
+
+      resultsEl.innerHTML = results.map((item, idx) => `
+        <div onclick="selectSearchCover('${item.coverUrl}', '${escapeHtml(item.artist)}', '${escapeHtml(item.title)}')" 
+             class="bg-slate-800 border border-slate-700 hover:border-indigo-500 rounded-lg p-2 cursor-pointer transition group flex flex-col items-center">
+          <div class="w-full aspect-square bg-slate-900 rounded overflow-hidden mb-1.5 relative">
+            <img src="${item.coverUrl}" class="w-full h-full object-cover group-hover:scale-105 transition" alt="Cover" onerror="this.src='https://via.placeholder.com/300?text=Cover+Not+Available'">
+            <span class="absolute top-1 left-1 text-[8px] bg-slate-950/80 text-slate-300 px-1 rounded">${item.source}</span>
+          </div>
+          <p class="text-[10px] font-bold text-white text-center truncate w-full">${escapeHtml(item.title)}</p>
+          <p class="text-[9px] text-slate-400 text-center truncate w-full">${escapeHtml(item.artist)}</p>
+        </div>
+      `).join('');
+
+      // Auto select first search result
+      if (results.length > 0) {
+        selectSearchCover(results[0].coverUrl, results[0].artist, results[0].title);
+      }
+    }
+
+    function selectSearchCover(url, artist, title) {
+      selectedSearchCoverUrl = url;
+      if (artist) document.getElementById('input-artist').value = artist;
+      if (title) document.getElementById('input-title').value = title;
+      updateFormatPreview();
+    }
+
+    function useCustomUrl() {
+      const url = document.getElementById('input-custom-url').value.trim();
+      if (!url) {
+        alert('Please enter a valid image URL');
+        return;
+      }
+      selectedSearchCoverUrl = url;
+      updateFormatPreview();
+    }
+
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          selectedSearchCoverUrl = evt.target.result;
+          updateFormatPreview();
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    /* --- RESIZING & FORMATTING ENGINE (83.8mm x 50.8mm) --- */
+    function updateFormatPreview() {
+      const radios = document.getElementsByName('format-style');
+      for (const r of radios) {
+        if (r.checked) activeFormatStyle = r.value;
+      }
+
+      const artist = document.getElementById('input-artist').value || 'Artist Name';
+      const title = document.getElementById('input-title').value || 'Album Title';
+      const coverUrl = selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=Select+Cover';
+
+      const previewBox = document.getElementById('format-preview-box');
+      previewBox.innerHTML = generateFormattedLabelHTML(artist, title, coverUrl, activeFormatStyle);
+    }
+
+    function generateFormattedLabelHTML(artist, title, coverUrl, style) {
+      if (style === 'split') {
+        // Square cover on left (matches 50.8mm height), styled text block on right
+        return `
+          <div class="w-full h-full bg-slate-950 flex items-center overflow-hidden text-white font-sans">
+            <div class="h-full aspect-square flex-shrink-0 bg-black">
+              <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+            </div>
+            <div class="flex-1 px-2 py-1 flex flex-col justify-center min-w-0 bg-gradient-to-r from-slate-900 to-slate-950 h-full border-l border-slate-800/80">
+              <h5 class="text-[10px] font-extrabold leading-tight tracking-tight text-white line-clamp-2 uppercase">${escapeHtml(title)}</h5>
+              <p class="text-[8px] font-semibold text-indigo-300 mt-0.5 line-clamp-1">${escapeHtml(artist)}</p>
+              <div class="mt-1 flex items-center gap-1 opacity-60">
+                <i class="fa-solid fa-barcode text-[10px]"></i>
+                <span class="text-[6px] tracking-widest font-mono">HAMA-5028</span>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (style === 'crop') {
+        // Crop/Zoom square image to fill 83.8x50.8mm rectangle
+        return `
+          <div class="w-full h-full bg-black relative overflow-hidden">
+            <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5 text-white">
+              <p class="text-[9px] font-bold truncate">${escapeHtml(title)}</p>
+              <p class="text-[7px] text-slate-300 truncate">${escapeHtml(artist)}</p>
+            </div>
+          </div>
+        `;
+      } else if (style === 'blur') {
+        // Blurred ambient background fill
+        return `
+          <div class="w-full h-full relative overflow-hidden flex items-center justify-center bg-black">
+            <img src="${coverUrl}" class="absolute inset-0 w-full h-full object-cover blur-md opacity-50 scale-110" alt="Background">
+            <div class="relative h-full aspect-square z-10 shadow-lg">
+              <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+            </div>
+          </div>
+        `;
+      } else {
+        // Letterbox / Contain centered
+        return `
+          <div class="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden">
+            <div class="h-full aspect-square border-x border-slate-800">
+              <img src="${coverUrl}" class="w-full h-full object-cover" alt="Cover">
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function saveSelectedAlbum() {
+      const artist = document.getElementById('input-artist').value.trim();
+      const title = document.getElementById('input-title').value.trim();
+
+      if (!artist || !title) {
+        alert('Please specify both Artist and Title for the album.');
+        return;
+      }
+
+      const newAlbum = {
+        id: Date.now().toString(),
+        artist: artist,
+        title: title,
+        coverUrl: selectedSearchCoverUrl || 'https://via.placeholder.com/500/1e293b/ffffff?text=No+Cover',
+        style: activeFormatStyle
+      };
+
+      albums.unshift(newAlbum);
+
+      // Auto place in first available slot if empty
+      const emptySlotIndex = slots.findIndex(s => s === null);
+      if (emptySlotIndex !== -1) {
+        slots[emptySlotIndex] = newAlbum;
+      }
+
+      saveLocalStorage();
+      renderAlbumList();
+      renderGridSlots();
+      closeAddModal();
+    }
+
+    /* --- HAMA 5028 SHEET GRID RENDERER (DIN A4 PAGE) --- */
+    function renderGridSlots() {
+      const previewGrid = document.getElementById('grid-container');
+      const printGrid = document.getElementById('print-grid-container');
+      const showBorder = document.getElementById('show-borders').checked;
+
+      let previewHTML = '';
+      let printHTML = '';
+
+      // Grid geometry: 2 columns, 5 rows
+      for (let i = 0; i < 10; i++) {
+        const col = i % 2; // 0 or 1
+        const row = Math.floor(i / 2); // 0..4
+
+        // Calculated coordinates in mm
+        const leftMm = leftMargin + (col * LABEL_WIDTH);
+        const topMm = topMargin + (row * LABEL_HEIGHT);
+
+        const album = slots[i];
+
+        // Screen Preview Slot
+        previewHTML += `
+          <div class="absolute ${showBorder ? 'border border-slate-300 border-dashed' : ''} group"
+               style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;"
+               id="slot-${i}">
+            
+            ${album ? `
+              <div class="w-full h-full relative group">
+                ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split')}
+                
+                <!-- Quick Controls Overlay -->
+                <div class="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 no-print">
+                  <span class="text-[9px] font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">Slot ${i + 1}</span>
+                  <button onclick="removeFromSlot(${i})" class="bg-red-600 text-white p-1.5 rounded hover:bg-red-500 text-xs" title="Remove from slot">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+            ` : `
+              <div onclick="openSlotPicker(${i})" class="w-full h-full bg-slate-50/50 hover:bg-indigo-50/80 border border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer transition no-print text-slate-400 hover:text-indigo-600">
+                <span class="text-[10px] font-bold uppercase tracking-wider">Slot ${i + 1}</span>
+                <span class="text-[8px] mt-0.5">+ Click to Place</span>
+              </div>
+            `}
+          </div>
+        `;
+
+        // Exact Printable Slot for @media print
+        if (album) {
+          printHTML += `
+            <div class="absolute print-no-border"
+                 style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;">
+              ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split')}
+            </div>
+          `;
+        }
+      }
+
+      previewGrid.innerHTML = previewHTML;
+      printGrid.innerHTML = printHTML;
+    }
+
+    /* --- SLOT ACTIONS --- */
+    function placeInSlot(albumId, slotIndex) {
+      const album = albums.find(a => a.id === albumId);
+      if (album) {
+        slots[slotIndex] = album;
+        saveLocalStorage();
+        renderGridSlots();
+      }
+    }
+
+    function removeFromSlot(slotIndex) {
+      slots[slotIndex] = null;
+      saveLocalStorage();
+      renderGridSlots();
+    }
+
+    function autoFillSheet() {
+      if (albums.length === 0) {
+        alert('Add some albums to your library first!');
+        return;
+      }
+      for (let i = 0; i < 10; i++) {
+        slots[i] = albums[i % albums.length];
+      }
+      saveLocalStorage();
+      renderGridSlots();
+    }
+
+    function clearSheet() {
+      slots = Array(10).fill(null);
+      saveLocalStorage();
+      renderGridSlots();
+    }
+
+    function openSlotPicker(slotIndex) {
+      if (albums.length === 0) {
+        openAddModal();
+        return;
+      }
+      // Place the most recent album or open selection
+      slots[slotIndex] = albums[0];
+      saveLocalStorage();
+      renderGridSlots();
+    }
+
+    // Helper: HTML Escaping
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
