@@ -135,9 +135,28 @@
       <button onclick="openDataModal()" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 text-sm font-medium px-3.5 py-2.5 rounded-lg border border-slate-700 transition flex items-center gap-2" title="Manage Local Data & Migration">
         <i class="fa-solid fa-database"></i> Data & Migration
       </button>
-      <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30">
-        <i class="fa-solid fa-print"></i> Print Sheet
-      </button>
+      
+      <!-- Print Button with On-Screen Warning Tooltip on Hover -->
+      <div class="relative group/print">
+        <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30">
+          <i class="fa-solid fa-print"></i> Print Sheet
+        </button>
+
+        <!-- Hover Warning Box -->
+        <div class="absolute right-0 top-full mt-2 w-72 p-3 bg-amber-950/90 border border-amber-500/50 rounded-xl shadow-2xl backdrop-blur-sm opacity-0 pointer-events-none group-hover/print:opacity-100 group-hover/print:pointer-events-auto transition-all duration-200 z-50 text-[11px] text-amber-100 leading-tight">
+          <div class="font-bold text-amber-300 flex items-center gap-1.5 mb-1.5">
+            <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> Printer Settings Warning
+          </div>
+          <p class="mb-1">Ensure the following settings in your browser print dialog for exact alignment:</p>
+          <ul class="list-disc list-inside space-y-0.5 text-amber-200 font-mono text-[10px]">
+            <li><strong>Margins:</strong> None (0mm)</li>
+            <li><strong>Scale:</strong> 100% (Custom)</li>
+            <li><strong>Background graphics:</strong> Enabled</li>
+            <li><strong>Headers & footers:</strong> Disabled</li>
+          </ul>
+        </div>
+      </div>
+
       <a href="https://github.com/cnlpete/tonuino-card-creator"
         target="_blank"
         rel="noopener noreferrer"
