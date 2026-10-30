@@ -23,6 +23,21 @@
       aspect-ratio: 83.8 / 50.8;
     }
 
+    /* Drag & Drop Visual Indicators */
+    body.is-dragging .slot-slot-wrapper {
+      border-color: #818cf8 !important;
+      background-color: rgba(99, 102, 241, 0.04);
+      transition: all 0.2s ease;
+    }
+    
+    .drag-over-target {
+      transform: scale(1.02);
+      box-shadow: 0 0 25px rgba(99, 102, 241, 0.7) !important;
+      border-color: #6366f1 !important;
+      background-color: rgba(99, 102, 241, 0.2) !important;
+      z-index: 40;
+    }
+
     /* Screen-only rules for print section */
     @media screen {
       #print-section {
@@ -135,24 +150,23 @@
       <button onclick="openDataModal()" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-indigo-200 text-sm font-medium px-3.5 py-2.5 rounded-lg border border-slate-700 transition flex items-center gap-2" title="Manage Local Data & Migration">
         <i class="fa-solid fa-database"></i> Data & Migration
       </button>
-      
-      <!-- Print Button with On-Screen Warning Tooltip on Hover -->
-      <div class="relative group/print">
+
+      <!-- Print Button Container with Hover Warning Tooltip -->
+      <div class="relative group">
         <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30">
           <i class="fa-solid fa-print"></i> Print Sheet
         </button>
 
-        <!-- Hover Warning Box -->
-        <div class="absolute right-0 top-full mt-2 w-72 p-3 bg-amber-950/90 border border-amber-500/50 rounded-xl shadow-2xl backdrop-blur-sm opacity-0 pointer-events-none group-hover/print:opacity-100 group-hover/print:pointer-events-auto transition-all duration-200 z-50 text-[11px] text-amber-100 leading-tight">
-          <div class="font-bold text-amber-300 flex items-center gap-1.5 mb-1.5">
-            <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> Printer Settings Warning
+        <!-- Print Setup Warning Tooltip -->
+        <div class="absolute right-0 top-full mt-2 w-72 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50 text-[11px] text-slate-300 space-y-1.5">
+          <div class="font-bold text-amber-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-triangle-exclamation"></i> Required Print Settings
           </div>
-          <p class="mb-1">Ensure the following settings in your browser print dialog for exact alignment:</p>
-          <ul class="list-disc list-inside space-y-0.5 text-amber-200 font-mono text-[10px]">
-            <li><strong>Margins:</strong> None (0mm)</li>
-            <li><strong>Scale:</strong> 100% (Custom)</li>
-            <li><strong>Background graphics:</strong> Enabled</li>
-            <li><strong>Headers & footers:</strong> Disabled</li>
+          <ul class="list-disc list-inside space-y-0.5 text-slate-300">
+            <li><span class="font-semibold text-white">Margins:</span> None (or 0 mm)</li>
+            <li><span class="font-semibold text-white">Scale:</span> 100% (Do NOT fit)</li>
+            <li><span class="font-semibold text-white">Background Graphics:</span> Enabled</li>
+            <li><span class="font-semibold text-white">Headers & Footers:</span> Disabled</li>
           </ul>
         </div>
       </div>
@@ -177,7 +191,7 @@
         <h2 class="font-semibold text-slate-200 text-sm flex items-center gap-2">
           <i class="fa-solid fa-layer-group text-indigo-400"></i> My Tonuino Cards (<span id="album-count">0</span>)
         </h2>
-        <span class="text-xs text-slate-400">Click slot button to place</span>
+        <span class="text-xs text-slate-400">Click card to select & place</span>
       </div>
 
       <!-- Album List -->
@@ -496,6 +510,7 @@
     // State Management
     let albums = [];
     let slots = Array(10).fill(null); // 10 Grid Positions (0..9)
+    let selectedAlbumId = null; // Track selected card from library
     let editingAlbumId = null; // Track if editing existing album or adding new
     let selectedSearchCoverUrl = '';
     let selectedSearchCoverBase64 = null;
@@ -510,6 +525,9 @@
     let dragStartY = 0;
     let startCropX = 50;
     let startCropY = 50;
+
+    // Drag and Drop Global Tracking
+    let draggedSource = null; // { type: 'sidebar', id: '...' } or { type: 'slot', index: 0..9 }
 
     // Initial Default Seed Data
     const defaultAlbums = [
@@ -618,6 +636,9 @@
     // Initialize App
     window.addEventListener('DOMContentLoaded', () => {
       loadLocalStorage();
+      if (albums.length > 0) {
+        selectedAlbumId = albums[0].id;
+      }
       renderAlbumList();
       renderGridSlots();
       updateSheetMargins();
@@ -951,7 +972,84 @@
       renderGridSlots();
     }
 
-    /* --- CARD MANAGEMENT --- */
+    /* --- CARD MANAGEMENT & SELECTION --- */
+    function selectCard(id) {
+      selectedAlbumId = id;
+      renderAlbumList();
+    }
+
+    function handleSidebarDragStart(e, id) {
+      draggedSource = { type: 'sidebar', id: id };
+      e.dataTransfer.setData('text/plain', JSON.stringify(draggedSource));
+      e.dataTransfer.effectAllowed = 'copy';
+      document.body.classList.add('is-dragging');
+    }
+
+    function handleSlotDragStart(e, slotIndex) {
+      draggedSource = { type: 'slot', index: slotIndex };
+      e.dataTransfer.setData('text/plain', JSON.stringify(draggedSource));
+      e.dataTransfer.effectAllowed = 'move';
+      document.body.classList.add('is-dragging');
+    }
+
+    function handleDragOver(e, el) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = (draggedSource && draggedSource.type === 'sidebar') ? 'copy' : 'move';
+      
+      // Highlight exact drop target slot and unhighlight others
+      document.querySelectorAll('.slot-slot-wrapper').forEach(s => {
+        if (s === el) {
+          s.classList.add('drag-over-target');
+        } else {
+          s.classList.remove('drag-over-target');
+        }
+      });
+    }
+
+    function handleDragEnd(e) {
+      clearDragHighlights();
+    }
+
+    function clearDragHighlights() {
+      document.body.classList.remove('is-dragging');
+      document.querySelectorAll('.slot-slot-wrapper').forEach(s => {
+        s.classList.remove('drag-over-target');
+      });
+    }
+
+    function handleSlotDrop(e, targetSlotIndex) {
+      e.preventDefault();
+      clearDragHighlights();
+      
+      let sourceData = draggedSource;
+      if (!sourceData) {
+        try {
+          sourceData = JSON.parse(e.dataTransfer.getData('text/plain'));
+        } catch(err) {}
+      }
+
+      if (!sourceData) return;
+
+      if (sourceData.type === 'sidebar') {
+        const album = albums.find(a => a.id === sourceData.id);
+        if (album) {
+          slots[targetSlotIndex] = album;
+          saveLocalStorage();
+          renderGridSlots();
+        }
+      } else if (sourceData.type === 'slot') {
+        const fromIndex = sourceData.index;
+        if (fromIndex !== targetSlotIndex) {
+          const temp = slots[fromIndex];
+          slots[fromIndex] = slots[targetSlotIndex];
+          slots[targetSlotIndex] = temp;
+          saveLocalStorage();
+          renderGridSlots();
+        }
+      }
+      draggedSource = null;
+    }
+
     function renderAlbumList() {
       const listEl = document.getElementById('album-list');
       const countEl = document.getElementById('album-count');
@@ -968,36 +1066,30 @@
         return;
       }
 
-      listEl.innerHTML = albums.map(album => `
-        <div class="bg-slate-800/70 border border-slate-700/60 rounded-xl p-3 flex gap-3 items-center hover:border-slate-600 transition group">
-          <div class="w-12 h-12 bg-slate-900 rounded-lg overflow-hidden flex-shrink-0 border border-slate-700">
-            <img src="${album.imageBase64 || album.coverUrl}" class="w-full h-full object-cover" style="object-position: ${album.cropX ?? 50}% ${album.cropY ?? 50}%;" alt="Cover" onerror="if(this.src !== '${escapeHtml(album.coverUrl)}') this.src='${escapeHtml(album.coverUrl)}'; else this.src='https://via.placeholder.com/150?text=No+Cover';">
-          </div>
-          
-          <div class="flex-1 min-w-0">
-            <h4 class="text-xs font-bold text-white truncate" title="${escapeHtml(album.title)}">${escapeHtml(album.title)}</h4>
-            <p class="text-[11px] text-slate-400 truncate" title="${escapeHtml(album.artist)}">${escapeHtml(album.artist)}</p>
-            <div class="flex items-center gap-1 mt-1">
-              <span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded uppercase font-mono">${album.style || 'split'}</span>
-              ${album.showText === false ? '<span class="text-[9px] bg-rose-950/80 text-rose-300 px-1.5 py-0.5 rounded">No Text</span>' : ''}
-            </div>
-          </div>
+      listEl.innerHTML = albums.map(album => {
+        const isSelected = album.id === selectedAlbumId;
 
-          <div class="flex flex-col gap-1.5 items-end">
-            <div class="relative group/btn">
-              <button class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] px-2 py-1 rounded font-medium flex items-center gap-1 shadow">
-                <i class="fa-solid fa-plus"></i> Slot
-              </button>
-              <div class="hidden group-hover/btn:flex absolute right-0 top-0 bg-slate-900 border border-slate-700 rounded-lg p-1.5 shadow-xl z-20 grid grid-cols-5 gap-1 w-36">
-                ${Array.from({length: 10}).map((_, i) => `
-                  <button onclick="placeInSlot('${album.id}', ${i})" class="text-[10px] font-bold p-1 hover:bg-indigo-600 text-slate-200 rounded text-center">
-                    ${i + 1}
-                  </button>
-                `).join('')}
+        return `
+          <div draggable="true" 
+               ondragstart="handleSidebarDragStart(event, '${album.id}')"
+               ondragend="handleDragEnd(event)"
+               onclick="selectCard('${album.id}')"
+               class="bg-slate-800/70 border ${isSelected ? 'border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-950/30' : 'border-slate-700/60 hover:border-slate-600'} rounded-xl p-3 flex gap-3 items-center transition group cursor-pointer select-none">
+            
+            <div class="w-12 h-12 bg-slate-900 rounded-lg overflow-hidden flex-shrink-0 border border-slate-700 relative">
+              <img src="${album.imageBase64 || album.coverUrl}" class="w-full h-full object-cover" style="object-position: ${album.cropX ?? 50}% ${album.cropY ?? 50}%;" alt="Cover" onerror="if(this.src !== '${escapeHtml(album.coverUrl)}') this.src='${escapeHtml(album.coverUrl)}'; else this.src='https://via.placeholder.com/150?text=No+Cover';">
+            </div>
+            
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white truncate" title="${escapeHtml(album.title)}">${escapeHtml(album.title)}</h4>
+              <p class="text-[11px] text-slate-400 truncate" title="${escapeHtml(album.artist)}">${escapeHtml(album.artist)}</p>
+              <div class="flex items-center gap-1 mt-1">
+                <span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded uppercase font-mono">${album.style || 'split'}</span>
+                ${album.showText === false ? '<span class="text-[9px] bg-rose-950/80 text-rose-300 px-1.5 py-0.5 rounded">No Text</span>' : ''}
               </div>
             </div>
 
-            <div class="flex items-center gap-1 text-slate-400">
+            <div class="flex items-center gap-1 text-slate-400" onclick="event.stopPropagation()">
               <button onclick="openAddModal('${album.id}')" class="hover:text-indigo-300 text-xs p-1 transition" title="Edit Card">
                 <i class="fa-solid fa-pen-to-square"></i>
               </button>
@@ -1009,8 +1101,8 @@
               </button>
             </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function cloneAlbum(id) {
@@ -1030,6 +1122,8 @@
         albums.unshift(clonedAlbum);
       }
 
+      selectedAlbumId = clonedAlbum.id;
+
       const emptySlotIndex = slots.findIndex(s => s === null);
       if (emptySlotIndex !== -1) {
         slots[emptySlotIndex] = clonedAlbum;
@@ -1043,6 +1137,9 @@
     function deleteAlbum(id) {
       albums = albums.filter(a => a.id !== id);
       slots = slots.map(s => s && s.id === id ? null : s);
+      if (selectedAlbumId === id) {
+        selectedAlbumId = albums.length > 0 ? albums[0].id : null;
+      }
       saveLocalStorage();
       renderAlbumList();
       renderGridSlots();
@@ -1448,6 +1545,7 @@
             id: Date.now().toString()
           };
           albums.unshift(newAlbum);
+          selectedAlbumId = newAlbum.id;
 
           const emptySlotIndex = slots.findIndex(s => s === null);
           if (emptySlotIndex !== -1) {
@@ -1485,23 +1583,28 @@
         const album = slots[i];
 
         previewHTML += `
-          <div class="absolute ${showBorder ? 'border border-slate-300 border-dashed' : ''} group"
+          <div class="absolute ${showBorder ? 'border border-slate-300 border-dashed' : ''} group slot-slot-wrapper transition-all duration-200"
                style="left: ${leftMm}mm; top: ${topMm}mm; width: ${LABEL_WIDTH}mm; height: ${LABEL_HEIGHT}mm;"
-               id="slot-${i}">
+               id="slot-${i}"
+               ondragover="handleDragOver(event, this)"
+               ondrop="handleSlotDrop(event, ${i})">
             
             ${album ? `
-              <div class="w-full h-full relative group">
+              <div class="w-full h-full relative group cursor-grab active:cursor-grabbing"
+                   draggable="true"
+                   ondragstart="handleSlotDragStart(event, ${i})"
+                   ondragend="handleDragEnd(event)">
                 ${generateFormattedLabelHTML(album.artist, album.title, album.coverUrl, album.style || 'split', album.showText !== false, album.cropX ?? 50, album.cropY ?? 50, album.imageBase64)}
                 
                 <div class="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 no-print z-20">
                   <span class="text-[9px] font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">Slot ${i + 1}</span>
-                  <button onclick="removeFromSlot(${i})" class="bg-red-600 text-white p-1.5 rounded hover:bg-red-500 text-xs" title="Remove from slot">
+                  <button onclick="event.stopPropagation(); removeFromSlot(${i})" class="bg-red-600 text-white p-1.5 rounded hover:bg-red-500 text-xs" title="Remove from slot">
                     <i class="fa-solid fa-xmark"></i>
                   </button>
                 </div>
               </div>
             ` : `
-              <div onclick="openSlotPicker(${i})" class="w-full h-full bg-slate-50/50 hover:bg-indigo-50/80 border border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer transition no-print text-slate-400 hover:text-indigo-600">
+              <div onclick="placeInSlot('${selectedAlbumId}', ${i})" class="w-full h-full bg-slate-50/50 hover:bg-indigo-50/80 border border-dashed border-slate-300 flex flex-col items-center justify-center cursor-pointer transition no-print text-slate-400 hover:text-indigo-600">
                 <span class="text-[10px] font-bold uppercase tracking-wider">Slot ${i + 1}</span>
                 <span class="text-[8px] mt-0.5">+ Click to Place</span>
               </div>
@@ -1525,6 +1628,7 @@
 
     /* --- SLOT ACTIONS --- */
     function placeInSlot(albumId, slotIndex) {
+      if (!albumId) return;
       const album = albums.find(a => a.id === albumId);
       if (album) {
         slots[slotIndex] = album;
@@ -1562,9 +1666,11 @@
         openAddModal();
         return;
       }
-      slots[slotIndex] = albums[0];
-      saveLocalStorage();
-      renderGridSlots();
+      if (selectedAlbumId) {
+        placeInSlot(selectedAlbumId, slotIndex);
+      } else {
+        placeInSlot(albums[0].id, slotIndex);
+      }
     }
 
     function escapeHtml(str) {
